@@ -201,21 +201,6 @@ let dump_reason r =
 let desc_of_reason r =
   r.desc
 
-let internal_name name =
-  spf ".%s" name
-
-let is_internal_name name =
-  String.length name >= 1 && name.[0] = '.'
-
-let internal_module_name name =
-  spf ".$module__%s" name
-
-let is_internal_module_name name =
-  Utils.str_starts_with name ".$module__"
-
-let internal_pattern_name loc =
-  spf ".$pattern__%s" (string_of_loc loc)
-
 let is_derivable_reason r =
   r.derivable
 

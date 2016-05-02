@@ -88,7 +88,7 @@ let rec type_printer override fallback enclosure cx t =
           Context.property_maps cx
           |> IMap.find_unsafe flds
           |> SMap.elements
-          |> List.filter (fun (x,_) -> not (Reason_js.is_internal_name x))
+          |> List.filter (fun (x,_) -> not (is_internal_name x))
           |> List.rev
           |> List.map (fun (x,t) ->
                (prop_name cx x t) ^ ": " ^ (pp EnclosureProp cx t))
@@ -316,7 +316,7 @@ let rec is_printed_type_parsable_impl weak cx enclosure = function
           acc && (
             (* We don't print internal properties, thus we do not care whether
                their type is printable or not *)
-            (Reason_js.is_internal_name name) ||
+            (is_internal_name name) ||
             (is_printed_type_parsable_impl weak cx EnclosureNone t)
           )
         ) prop_map is_printable

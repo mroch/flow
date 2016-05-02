@@ -34,7 +34,7 @@ let explicit_decl_require_strict cx (m, resolved_m, cx_to) =
   let m_name =
     resolved_m
     |> Modulename.to_string
-    |> Reason_js.internal_module_name
+    |> Utils_js.internal_module_name
   in
   let from_t = Flow_js.mk_tvar cx reason in
   Flow_js.lookup_builtin cx m_name reason None from_t;

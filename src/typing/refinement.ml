@@ -8,6 +8,8 @@
  *
  *)
 
+open Utils_js
+
 module Ast = Spider_monkey_ast
 
 (*
@@ -23,12 +25,12 @@ let rec key = Ast.Expression.(function
 
 | _, This ->
   (* treat this as a property chain, in terms of refinement lifetime *)
-  Some (Reason_js.internal_name "this", [])
+  Some (internal_name "this", [])
 
 | _, Identifier (_, { Ast.Identifier.name; _ }) when name != "undefined" -> (
   (* ditto super *)
   match name with
-  | "super" -> Some (Reason_js.internal_name "super", [])
+  | "super" -> Some (internal_name "super", [])
   | _ -> Some (name, [])
   )
 

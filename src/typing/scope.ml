@@ -159,7 +159,7 @@ module Entry = struct
     | Value { kind = Const _; _ } ->
       entry
     | Value v ->
-      if Reason_js.is_internal_name name
+      if is_internal_name name
       then entry
       else Value { v with specific = v.general }
 
@@ -168,7 +168,7 @@ module Entry = struct
     | Type _ ->
       entry
     | Value v ->
-      if Reason_js.is_internal_name name
+      if is_internal_name name
       then entry
       else Value { v with specific = Type.EmptyT reason }
 

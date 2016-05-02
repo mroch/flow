@@ -193,3 +193,15 @@ let typo_suggestions =
       | _ -> 3
     in
     fst (List.fold_left (fold_results limit name) ([], max_int) possible_names)
+
+let internal_name name =
+  spf ".%s" name
+
+let is_internal_name name =
+  String.length name >= 1 && name.[0] = '.'
+
+let internal_module_name name =
+  spf ".$module__%s" name
+
+let is_internal_module_name name =
+  Utils.str_starts_with name ".$module__"

@@ -109,7 +109,7 @@ let autocomplete_filter_members members =
     &&
     (* strip out members from prototypes which are implicity created for
        internal reasons *)
-    not (Reason_js.is_internal_name key)
+    not (is_internal_name key)
   ) members
 
 let autocomplete_member
@@ -172,9 +172,9 @@ let autocomplete_id cx env =
   let result = SMap.fold (fun name entry acc ->
     (* Filter out internal environment variables except for this and
        super. *)
-    let is_this = name = (Reason_js.internal_name "this") in
-    let is_super = name = (Reason_js.internal_name "super") in
-    if not (is_this || is_super) && Reason_js.is_internal_name name
+    let is_this = name = (internal_name "this") in
+    let is_super = name = (internal_name "super") in
+    if not (is_this || is_super) && is_internal_name name
     then acc
     else (
       let (loc, name) =

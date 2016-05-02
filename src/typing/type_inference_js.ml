@@ -91,7 +91,7 @@ let infer_ast ~metadata ~filename ~module_name ast =
       (Entry.new_var ~loc:(Type.loc_of_t local_exports_var) local_exports_var)
       scope;
 
-    add_entry (Reason.internal_name "exports")
+    add_entry (Utils_js.internal_name "exports")
       (Entry.new_var
         ~loc:(Reason.loc_of_reason reason_exports_module)
         ~specific:(Type.EmptyT (

@@ -59,6 +59,9 @@ let summarize cx t = match t with
   | NumT (reason, _) -> NumT.why reason
   | _ -> t
 
+let internal_pattern_name loc =
+  internal_name (spf "$pattern__%s" (string_of_loc loc))
+
 (* AST helpers *)
 
 (* translate AST async/generator flags into Scope.function_kind *)
