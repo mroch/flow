@@ -229,7 +229,7 @@ let heap_check files = Module_js.(
     let checked = info.Module_js.checked in
     let required = info.Module_js.required in
     assert (parsed);
-    assert (checked || (NameSet.is_empty required));
+    assert (checked || (ModulenameSet.is_empty required));
   );
 )
 
@@ -548,7 +548,7 @@ let full_check workers ~ordered_libs parse_next options =
       else true, inferred, FilenameSet.empty
     )
     parsed
-    Module_js.NameSet.empty
+    Module_js.ModulenameSet.empty
     (List.rev_append error_files skipped_files)
   in
 

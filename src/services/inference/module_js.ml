@@ -24,15 +24,15 @@ module Reason = Reason_js
 module ErrorSet = Errors_js.ErrorSet
 module FlowError = Flow_error
 
-module NameSet = Set.Make(Modulename)
-module NameMap = MyMap.Make(Modulename)
+module ModulenameSet = Set.Make(Modulename)
+module ModulenameMap = MyMap.Make(Modulename)
 
 (* Subset of a file's context, with the important distinction that module
    references in the file have been resolved to module names. *)
 type info = {
   file: filename; (* file name *)
   _module: Modulename.t; (* module name *)
-  required: NameSet.t; (* required module names *)
+  required: ModulenameSet.t; (* required module names *)
   require_loc: Loc.t SMap.t; (* statement locations *)
   resolved_modules: Modulename.t SMap.t; (* map from module references in file
                                             to module names they resolve to *)
@@ -588,8 +588,8 @@ let imported_modules ~options cx =
   let set, map = SSet.fold (fun r (set, map) ->
     let loc = SMap.find_unsafe r req_locs in
     let resolved_r = imported_module ~options cx loc ~path_acc r in
-    NameSet.add resolved_r set, SMap.add r resolved_r map
-  ) reqs (NameSet.empty, SMap.empty) in
+    ModulenameSet.add resolved_r set, SMap.add r resolved_r map
+  ) reqs (ModulenameSet.empty, SMap.empty) in
   set, map, !path_acc
 
 (* Look up cached resolved module. *)
@@ -629,21 +629,21 @@ let reverse_imports_track importer_name requires =
     | Some reverse_imports ->
         reverse_imports
     | None ->
-        NameSet.empty
+        ModulenameSet.empty
     in
     let new_reverse_imports =
-      NameSet.add importer_name reverse_imports in
+      ModulenameSet.add importer_name reverse_imports in
     Hashtbl.replace reverse_imports_map module_name new_reverse_imports
   in
-  NameSet.iter add_requires requires
+  ModulenameSet.iter add_requires requires
 
 let reverse_imports_untrack importer_name requires =
   let remove_requires module_name =
     match reverse_imports_get module_name with
     | Some reverse_imports ->
         let new_reverse_imports =
-          NameSet.remove importer_name reverse_imports in
-        if not (NameSet.is_empty new_reverse_imports)
+          ModulenameSet.remove importer_name reverse_imports in
+        if not (ModulenameSet.is_empty new_reverse_imports)
         then Hashtbl.replace reverse_imports_map module_name new_reverse_imports
         else begin
           (* in case the reverse import map is empty we might have hit a case
@@ -653,12 +653,12 @@ let reverse_imports_untrack importer_name requires =
              the information returned by get-imported-by is never confusing
              for exisitng, but not imported modules *)
           if NameHeap.mem module_name
-          then Hashtbl.replace reverse_imports_map module_name NameSet.empty
+          then Hashtbl.replace reverse_imports_map module_name ModulenameSet.empty
           else reverse_imports_clear module_name
         end
     | None ->
         ()
-  in NameSet.iter remove_requires requires
+  in ModulenameSet.iter remove_requires requires
 
 (******************)
 (***** public *****)
@@ -705,7 +705,7 @@ let add_reverse_imports workers filenames =
     (* we need to make sure we are in the reverse import heap to avoid
        confusing behavior when querying it *)
     if not (Hashtbl.mem reverse_imports_map name)
-    then Hashtbl.add reverse_imports_map name NameSet.empty;
+    then Hashtbl.add reverse_imports_map name ModulenameSet.empty;
     reverse_imports_track name req
   ) module_reqs_assoc
 
@@ -761,7 +761,7 @@ let add_unparsed_info ~options file docblock =
     Docblock.isDeclarationFile docblock
   in
   let info = { file; _module; checked; parsed = false;
-    required = NameSet.empty;
+    required = ModulenameSet.empty;
     require_loc = SMap.empty;
     resolved_modules = SMap.empty;
     phantom_dependents = SSet.empty;
@@ -847,7 +847,7 @@ let commit_modules workers ~options inferred removed =
   let debug = Options.is_debug_mode options in
   if debug then prerr_endlinef
     "*** committing modules inferred %d removed %d ***"
-    (List.length inferred) (NameSet.cardinal removed);
+    (List.length inferred) (ModulenameSet.cardinal removed);
 
   (* all removed modules must be repicked *)
   (* all modules provided by newly inferred files must be repicked *)
@@ -865,17 +865,17 @@ let commit_modules workers ~options inferred removed =
   let repick = List.fold_left (fun acc (f, m) ->
     let f_module = Modulename.Filename f in
     add_provider f m; add_provider f f_module;
-    acc |> NameSet.add m |> NameSet.add f_module
+    acc |> ModulenameSet.add m |> ModulenameSet.add f_module
   ) removed file_module_assoc in
 
   (* prep for registering new mappings in NameHeap *)
-  let remove, replace, errmap = NameSet.fold (fun m (rem, rep, errmap) ->
+  let remove, replace, errmap = ModulenameSet.fold (fun m (rem, rep, errmap) ->
     match get_providers m with
     | ps when FilenameSet.cardinal ps = 0 ->
         if debug then prerr_endlinef
           "no remaining providers: %S"
           (Modulename.to_string m);
-        (NameSet.add m rem), rep, errmap
+        (ModulenameSet.add m rem), rep, errmap
     | ps ->
       (* incremental: clear error sets of provider candidates *)
       let errmap = FilenameSet.fold (fun f acc ->
@@ -896,14 +896,14 @@ let commit_modules workers ~options inferred removed =
             (Modulename.to_string m)
             (string_of_filename p)
             (string_of_filename f);
-          (NameSet.add m rem), ((m, p) :: rep), errmap
+          (ModulenameSet.add m rem), ((m, p) :: rep), errmap
       | None ->
           if debug then prerr_endlinef
             "initial provider %S -> %s"
             (Modulename.to_string m)
             (string_of_filename p);
-          (NameSet.add m rem), ((m, p) :: rep), errmap
-  ) repick (NameSet.empty, [], FilenameMap.empty) in
+          (ModulenameSet.add m rem), ((m, p) :: rep), errmap
+  ) repick (ModulenameSet.empty, [], FilenameMap.empty) in
 
   (* update NameHeap *)
   NameHeap.remove_batch remove;
@@ -960,19 +960,19 @@ let remove_files files =
               *)
               match reverse_imports_get _module with
               | Some reverse_imports ->
-                  if NameSet.is_empty reverse_imports
+                  if ModulenameSet.is_empty reverse_imports
                   then reverse_imports_clear _module
               | None -> ()
               );
               names
-              |> NameSet.add _module
-              |> NameSet.add (Modulename.Filename file)
+              |> ModulenameSet.add _module
+              |> ModulenameSet.add (Modulename.Filename file)
           | _ ->
               names
         )
       | None ->
           names
-  ) files NameSet.empty in
+  ) files ModulenameSet.empty in
   (* clear any registrations that point to infos we're about to clear *)
   (* for infos, remove_batch will ignore missing entries, no need to filter *)
   NameHeap.remove_batch names;

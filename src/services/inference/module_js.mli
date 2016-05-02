@@ -10,13 +10,13 @@
 
 open Utils_js
 
-module NameSet: Set.S with type elt = Modulename.t
-module NameMap: MyMap.S with type key = Modulename.t
+module ModulenameSet: Set.S with type elt = Modulename.t
+module ModulenameMap: MyMap.S with type key = Modulename.t
 
 type info = {
   file: filename;           (* file name *)
   _module: Modulename.t;    (* module name *)
-  required: NameSet.t;      (* required module names *)
+  required: ModulenameSet.t;      (* required module names *)
   require_loc: Loc.t SMap.t;  (* statement locations *)
   resolved_modules: Modulename.t SMap.t;
   phantom_dependents: SSet.t;
@@ -55,14 +55,14 @@ val get_module_info: filename -> info
 val get_module_name: filename -> Modulename.t
 
 (* given a module name, returns Some set of modules importing it or None *)
-val get_reverse_imports: Modulename.t -> NameSet.t option
+val get_reverse_imports: Modulename.t -> ModulenameSet.t option
 
 (* commit new and removed modules, after local inference *)
 val commit_modules:
   Worker.t list option ->
   options: Options.t ->
   filename list ->                    (* inferred modules *)
-  NameSet.t ->                           (* removed files *)
+  ModulenameSet.t ->                           (* removed files *)
   Errors_js.ErrorSet.t FilenameMap.t  (* filenames to error sets *)
 
 (* add file represented by context to module info store *)
@@ -78,7 +78,7 @@ val add_unparsed_info:
 (* remove module info being tracked for given file set;
    returns the set of modules removed
 *)
-val remove_files: FilenameSet.t -> NameSet.t
+val remove_files: FilenameSet.t -> ModulenameSet.t
 val clear_infos: FilenameSet.t -> unit
 
 val add_package: string -> Spider_monkey_ast.program -> unit

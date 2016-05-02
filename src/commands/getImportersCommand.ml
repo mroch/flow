@@ -50,7 +50,7 @@ let main option_values root json strip_root modules () =
         let f = Loc.string_of_filename f in
         if strip_root then Files_js.relative_path (Path.to_string root) f
         else f
-    ) (Module_js.NameSet.elements importers) in
+    ) (Module_js.ModulenameSet.elements importers) in
     SMap.add module_name importer_list map
   ) importers_map SMap.empty in
   if json

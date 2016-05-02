@@ -42,16 +42,16 @@ let calc_reverse_deps workers fileset = Module_js.(
   (* distribute requires from a list of files into reverse-dep map *)
   let job = List.fold_left (fun rdmap f ->
     let reqs = (get_module_info f).required in
-    NameSet.fold (fun r rdmap ->
-      NameMap.add r FilenameSet.(
-        match NameMap.get r rdmap with
+    ModulenameSet.fold (fun r rdmap ->
+      ModulenameMap.add r FilenameSet.(
+        match ModulenameMap.get r rdmap with
         | None -> singleton f
         | Some files -> add f files
       ) rdmap
     ) reqs rdmap
   ) in
   (* merge two reverse-dependency maps *)
-  let merge = NameMap.merge (fun _ x y ->
+  let merge = ModulenameMap.merge (fun _ x y ->
     match x, y with
     | Some v, None
     | None, Some v -> Some v
@@ -59,7 +59,7 @@ let calc_reverse_deps workers fileset = Module_js.(
     | None, None -> None
   ) in
   MultiWorker.call workers ~job ~merge
-    ~neutral: Module_js.NameMap.empty
+    ~neutral: Module_js.ModulenameMap.empty
     ~next: (Bucket.make (FilenameSet.elements fileset))
 )
 
@@ -73,7 +73,7 @@ let dep_closure rdmap fileset = FilenameSet.(
       if mem f !seen then acc else (
         seen := add f !seen;
         let m = Module_js.((get_module_info f)._module) in
-        add f (match Module_js.NameMap.get m rdmap with
+        add f (match Module_js.ModulenameMap.get m rdmap with
           | None -> acc
           | Some deps -> union acc (expand rdmap deps seen)
         )
@@ -111,7 +111,7 @@ let dependent_files workers unmodified_files inferred_files touched_modules =
 
   (* expand touched_modules to include those provided by new files *)
   let touched_modules = FilenameSet.fold Module_js.(fun file mods ->
-    NameSet.add (get_module_name file) mods
+    ModulenameSet.add (get_module_name file) mods
   ) inferred_files touched_modules in
 
   (* files whose resolution paths may encounter newly inferred modules *)
@@ -124,8 +124,8 @@ let dependent_files workers unmodified_files inferred_files touched_modules =
 
   (* files that require touched modules directly, or may resolve to
      modules provided by newly inferred files *)
-  let direct_deps = Module_js.(NameSet.fold (fun m s ->
-    match NameMap.get m reverse_deps with
+  let direct_deps = Module_js.(ModulenameSet.fold (fun m s ->
+    match ModulenameMap.get m reverse_deps with
     | Some files -> FilenameSet.union s files
     | None -> s
     ) touched_modules FilenameSet.empty
@@ -159,7 +159,7 @@ let implementation_file r = Module_js.(
 let calc_dependencies_job =
   List.fold_left (fun deps file ->
     let { Module_js.required; _ } = Module_js.get_module_info file in
-    let files = Module_js.NameSet.fold (fun r files ->
+    let files = Module_js.ModulenameSet.fold (fun r files ->
       match implementation_file r with
       | Some f -> FilenameSet.add f files
       | None -> files
