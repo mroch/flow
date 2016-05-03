@@ -94,7 +94,7 @@ let warn_or_ignore_decorators cx decorators_list =
         fst (List.nth decorators_list ((List.length decorators_list) - 1))
       in
       let loc = Loc.btwn first_loc last_loc in
-      FlowError.add_warning cx (loc, [
+      Flow_error.add_warning cx (loc, [
         "Experimental decorator usage";
         "Decorators are an early stage proposal that may change. " ^
           "Additionally, Flow does not account for the type implications " ^
@@ -117,7 +117,7 @@ let warn_or_ignore_class_properties cx ~static loc value =
   | Options.ESPROPOSAL_ENABLE
   | Options.ESPROPOSAL_IGNORE -> ()
   | Options.ESPROPOSAL_WARN ->
-    FlowError.add_warning cx (loc, [
+    Flow_error.add_warning cx (loc, [
       spf "Experimental %s usage" reason_subject;
       spf
       ("%ss are an active early stage feature proposal that may change. " ^^
@@ -129,7 +129,7 @@ let warn_or_ignore_class_properties cx ~static loc value =
 
 let warn_unsafe_getters_setters cx loc = Ast.Class.Method.(function
   | Get | Set when not (Context.enable_unsafe_getters_and_setters cx) ->
-    FlowError.add_warning cx (loc, [
+    Flow_error.add_warning cx (loc, [
       "Potentially unsafe get/set usage";
       ("Getters and setters with side effects are potentially unsafe and " ^
       "disabled by default. You may opt-in to using them anyway by putting " ^
@@ -146,7 +146,7 @@ let warn_or_ignore_export_star_as cx name =
   if name = None then () else
   match Context.esproposal_export_star_as cx, name with
   | Options.ESPROPOSAL_WARN, Some(loc, _) ->
-    FlowError.add_warning cx (loc, [
+    Flow_error.add_warning cx (loc, [
       "Experimental `export * as` usage";
       "`export * as` is an active early stage feature proposal that may " ^
         "change. You may opt-in to using it anyway by putting " ^
@@ -506,7 +506,7 @@ and toplevels cx type_params_map stmts =
     let uc = !n+1 in
     if uc < List.length stmts
     then (
-      let warn_unreachable loc = FlowError.(
+      let warn_unreachable loc = Flow_error.(
         add_warning cx (loc, ["unreachable code"])
       ) in
       let rec drop n lst = match (n, lst) with
@@ -572,13 +572,13 @@ and statement cx type_params_map = Ast.Statement.(
       if optional && _method
       then begin
         let msg = "optional methods are not supported" in
-        FlowError.add_error cx (loc, [msg])
+        Flow_error.add_error cx (loc, [msg])
       end;
       Ast.Expression.Object.(match _method, key with
       | _, Property.Literal (loc, _)
       | _, Property.Computed (loc, _) ->
           let msg = "illegal name" in
-          FlowError.add_error cx (loc, [msg]);
+          Flow_error.add_error cx (loc, [msg]);
           s
       | true, Property.Identifier (_, {Ast.Identifier.name; _}) ->
           (match value with
@@ -587,7 +587,7 @@ and statement cx type_params_map = Ast.Statement.(
             Iface_sig.append_method ~static name fsig s
           | _ ->
             let msg = "internal error: expected function type" in
-            FlowError.add_internal_error cx (loc, [msg]);
+            Flow_error.add_internal_error cx (loc, [msg]);
             s)
       | false, Property.Identifier (_, {Ast.Identifier.name; _}) ->
           let t = Anno.convert cx type_params_map value in
@@ -601,7 +601,7 @@ and statement cx type_params_map = Ast.Statement.(
         (* TODO? *)
         List.iter (fun (indexer_loc, _) ->
           let msg = "multiple indexers are not supported" in
-          FlowError.add_error cx (indexer_loc, [msg]);
+          Flow_error.add_error cx (indexer_loc, [msg]);
         ) rest;
         let k = Anno.convert cx type_params_map key in
         let v = Anno.convert cx type_params_map value in
@@ -659,11 +659,11 @@ and statement cx type_params_map = Ast.Statement.(
 
       | loc, Identifier _ ->
           let msg = "type annotations for catch params not yet supported" in
-          FlowError.add_error cx (loc, [msg])
+          Flow_error.add_error cx (loc, [msg])
 
       | loc, _ ->
           let msg = "unsupported catch parameter declaration" in
-          FlowError.add_error cx (loc, [msg])
+          Flow_error.add_error cx (loc, [msg])
     )
   in
 
@@ -963,7 +963,7 @@ and statement cx type_params_map = Ast.Statement.(
         if breaks_to_end then begin match break_opt with
           | None ->
             let msg = "internal error: break env missing for case" in
-            FlowError.add_internal_error cx (loc, [msg])
+            Flow_error.add_internal_error cx (loc, [msg])
           | Some break_env ->
             update_switch_state (break_env, case_writes, test_refis, reason)
         end;
@@ -1477,7 +1477,7 @@ and statement cx type_params_map = Ast.Statement.(
 
           | _ ->
               let msg = "unexpected LHS in for...in" in
-              FlowError.add_error cx (loc, [msg])
+              Flow_error.add_error cx (loc, [msg])
         );
 
         ignore (Abnormal.catch_control_flow_exception
@@ -1539,7 +1539,7 @@ and statement cx type_params_map = Ast.Statement.(
 
           | _ ->
               let msg = "unexpected LHS in for...of" in
-              FlowError.add_error cx (loc, [msg])
+              Flow_error.add_error cx (loc, [msg])
         );
 
         ignore (Abnormal.catch_control_flow_exception
@@ -1894,7 +1894,7 @@ and statement cx type_params_map = Ast.Statement.(
                   local_name
                   module_name
               in
-              FlowError.(add_error cx (mk_info import_reason [msg]));
+              Flow_error.(add_error cx (mk_info import_reason [msg]));
               (import_reason, local_name, AnyT.why import_reason)
             | Type.ImportTypeof ->
               let bind_reason = repos_reason (fst local) import_reason in
@@ -2161,7 +2161,7 @@ and object_prop cx type_params_map map = Ast.Expression.Object.(function
   (* literal LHS *)
   | Property (loc, { Property.key = Property.Literal _; _ }) ->
     let msg = "non-string literal property keys not supported" in
-    FlowError.add_error cx (loc, [msg]);
+    Flow_error.add_error cx (loc, [msg]);
     map
 
 
@@ -2217,7 +2217,7 @@ and object_prop cx type_params_map map = Ast.Expression.Object.(function
 
   | Property (loc, { Property.kind = Property.Get | Property.Set; _ }) ->
     let msg = "get/set properties not yet supported" in
-    FlowError.add_error cx (loc, [msg]);
+    Flow_error.add_error cx (loc, [msg]);
     map
 
   (* computed LHS *)
@@ -2581,7 +2581,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
           let msg =
             "The parameter passed to require() must be a literal string."
           in
-          FlowError.add_error cx (loc, [msg]);
+          Flow_error.add_error cx (loc, [msg]);
         );
         AnyT.at loc
     )
@@ -2618,7 +2618,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
                 "The first arg to requireLazy() must be a literal array of " ^
                 "string literals!"
               in
-              FlowError.add_error cx (loc, [msg]);
+              Flow_error.add_error cx (loc, [msg]);
               tvars
         ) in
         let module_tvars = List.fold_left element_to_module_tvar [] elements in
@@ -2635,7 +2635,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
           "The first arg to requireLazy() must be a literal array of " ^
           "string literals!"
         in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
 
         AnyT.at loc
     )
@@ -2673,7 +2673,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
         ArrT (reason, t, [])
       | _ ->
         let msg = "Use array literal instead of new Array(..)" in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
         EmptyT.at loc
       )
     )
@@ -2789,7 +2789,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
         ()
       | _ ->
         let msg = "unsupported arguments in call to invariant()" in
-        FlowError.add_error cx (loc, [msg])
+        Flow_error.add_error cx (loc, [msg])
       );
       VoidT.at loc
 
@@ -2946,7 +2946,7 @@ and expression_ ~is_cond cx type_params_map loc e = Ast.Expression.(match e with
   | Comprehension _
   | Generator _
   | Let _ ->
-    FlowError.add_error cx (loc, ["not (sup)ported"]);
+    Flow_error.add_error cx (loc, ["not (sup)ported"]);
     EmptyT.at loc
 )
 
@@ -3800,19 +3800,19 @@ and mk_proptypes cx type_params_map props = Ast.Expression.Object.(
     | Property (loc, { Property.key = Property.Literal _; _ }) ->
       let msg =
         "non-string literal property keys not supported for React propTypes" in
-      FlowError.add_error cx (loc, [msg]);
+      Flow_error.add_error cx (loc, [msg]);
       amap, omap, dict
 
     (* get/set kind *)
     | Property (loc, { Property.kind = Property.Get | Property.Set; _ }) ->
       let msg = "get/set properties not supported for React propTypes" in
-      FlowError.add_error cx (loc, [msg]);
+      Flow_error.add_error cx (loc, [msg]);
       amap, omap, dict
 
     (* computed LHS *)
     | Property (loc, { Property.key = Property.Computed _; _ }) ->
       let msg = "computed property keys not supported for React propTypes" in
-      FlowError.add_error cx (loc, [msg]);
+      Flow_error.add_error cx (loc, [msg]);
       amap, omap, dict
 
   ) (SMap.empty, SMap.empty, None) props
@@ -3942,7 +3942,7 @@ and react_create_class cx type_params_map loc class_props = Ast.Expression.(
 
       | _ ->
         let msg = "unsupported property specification in createClass" in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
         fmap, mmap
 
     ) (SMap.empty, SMap.empty) class_props in
@@ -4142,7 +4142,7 @@ and predicates_of_condition cx type_params_map e = Ast.(Expression.(
         begin match pred with
         | Some pred -> result BoolT.t name t pred sense
         | None ->
-          FlowError.add_warning cx (str_loc, [
+          Flow_error.add_warning cx (str_loc, [
             spf "string literal `%s`" typename;
             "This value is not a valid `typeof` return value"
           ]);
@@ -4650,7 +4650,7 @@ and mk_class_signature cx reason_c type_params_map is_derived body = Ast.Class.(
         _
       }) ->
         let msg = "literal properties not yet supported" in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
         class_sig
 
     (* computed LHS *)
@@ -4663,7 +4663,7 @@ and mk_class_signature cx reason_c type_params_map is_derived body = Ast.Class.(
         _
       }) ->
         let msg = "computed property keys not supported" in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
         class_sig
   ) class_sig elements
 )
@@ -4817,7 +4817,7 @@ and mk_class cx type_params_map loc reason_c = Ast.Class.(fun {
   (* TODO *)
   if implements <> [] then
     let msg = "implements not supported" in
-    FlowError.add_error cx (loc, [msg])
+    Flow_error.add_error cx (loc, [msg])
   else ();
 
   (* type parameters: <X> *)
@@ -4947,7 +4947,7 @@ and extract_extends cx structural = function
       then (Some id, typeParameters)::(extract_extends cx structural others)
       else
         let msg = "A class cannot extend multiple classes!" in
-        FlowError.add_error cx (loc, [msg]);
+        Flow_error.add_error cx (loc, [msg]);
         []
 
 and extract_mixins _cx =

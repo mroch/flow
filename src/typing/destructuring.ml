@@ -10,9 +10,7 @@
 
 (* AST handling for destructuring exprs *)
 
-module Env = Env_js
 module Ast = Spider_monkey_ast
-module FlowError = Flow_error
 
 open Utils_js
 open Reason_js
@@ -208,7 +206,7 @@ let rec destructuring ?parent_pattern_t cx curr_t init default f =
 )
 
 and error_destructuring cx loc =
-  FlowError.add_error cx (loc, ["unsupported destructuring"])
+  Flow_error.add_error cx (loc, ["unsupported destructuring"])
 
 let type_of_pattern = Ast.Pattern.(function
   | _, Array { Array.typeAnnotation; _; } -> typeAnnotation
@@ -224,5 +222,5 @@ let destructuring_assignment cx rhs_t init =
   destructuring cx rhs_t (Some init) None (fun cx loc name _default t ->
     (* TODO destructuring+defaults unsupported in assignment expressions *)
     let reason = mk_reason (spf "assignment of identifier `%s`" name) loc in
-    ignore Env.(set_var cx name t reason)
+    ignore Env_js.(set_var cx name t reason)
   )
