@@ -194,11 +194,25 @@ let typo_suggestions =
     in
     fst (List.fold_left (fold_results limit name) ([], max_int) possible_names)
 
-let internal_name name =
-  spf ".%s" name
+type name =
+  | InternalName of string
+  | ExternalName of string
 
-let is_internal_name name =
-  String.length name >= 1 && name.[0] = '.'
+let debug_string_of_name = function
+  | InternalName str -> spf "%s (internal)" str
+  | ExternalName str -> str
+
+module NameMap = MyMap.Make (struct
+  type t = name
+  let compare = Pervasives.compare
+end)
+
+let internal_name (name: string) =
+  InternalName name
+
+let is_internal_name = function
+  | InternalName _ -> true
+  | _ -> false
 
 let internal_module_name name =
   spf ".$module__%s" name

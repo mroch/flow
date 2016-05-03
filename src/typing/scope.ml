@@ -153,7 +153,7 @@ module Entry = struct
       and internal vars are read-only, so specific types can be preserved.
       TODO: value_state should go from Declared to MaybeInitialized?
     *)
-  let havoc name entry =
+  let havoc (name: Utils_js.name) entry =
     match entry with
     | Type _
     | Value { kind = Const _; _ } ->
@@ -221,7 +221,7 @@ type refi_binding = {
 type t = {
   id: int;
   kind: kind;
-  mutable entries: Entry.t SMap.t;
+  mutable entries: Entry.t NameMap.t;
   mutable refis: refi_binding KeyMap.t
 }
 
@@ -229,7 +229,7 @@ type t = {
 let fresh_impl kind = {
   id = mk_id ();
   kind;
-  entries = SMap.empty;
+  entries = NameMap.empty;
   refis = KeyMap.empty
 }
 
@@ -248,34 +248,36 @@ let clone { id; kind; entries; refis } =
 
 (* use passed f to iterate over all scope entries *)
 let iter_entries f scope =
-  SMap.iter f scope.entries
+  NameMap.iter f scope.entries
 
 (* use passed f to update all scope entries *)
 let update_entries f scope =
-  scope.entries <- SMap.mapi f scope.entries
+  scope.entries <- NameMap.mapi f scope.entries
 
 (* add entry to scope *)
 let add_entry name entry scope =
-  scope.entries <- SMap.add name entry scope.entries
+  scope.entries <- NameMap.add name entry scope.entries
 
 (* remove entry from scope *)
 let remove_entry name scope =
-  scope.entries <- SMap.remove name scope.entries
+  scope.entries <- NameMap.remove name scope.entries
 
 (* get entry from scope, or None *)
 let get_entry name scope =
-  SMap.get name scope.entries
+  NameMap.get name scope.entries
 
 (* havoc entry *)
-let havoc_entry name scope =
+let havoc_entry (name: Utils_js.name) scope =
   match get_entry name scope with
   | Some entry ->
     let entry = Entry.havoc name entry in
-    scope.entries <- SMap.add name entry scope.entries
+    scope.entries <- NameMap.add name entry scope.entries
   | None ->
     assert_false (spf "entry %S not found in scope %d: { %s }"
-      name scope.id (String.concat ", "
-        (SMap.fold (fun n _ acc -> n :: acc) scope.entries [])))
+      (debug_string_of_name name) scope.id (String.concat ", "
+        (NameMap.fold (fun n _ acc ->
+          (debug_string_of_name n) :: acc
+        ) scope.entries [])))
 
 (* use passed f to update all scope refis *)
 let update_refis f scope =

@@ -61,7 +61,7 @@ type rhs_def =
 type hook_state_t = {
   id_hook:
      (Context.t ->
-      string -> Loc.t ->
+      Utils_js.name -> Loc.t ->
       bool);
 
   lval_hook:
@@ -71,7 +71,7 @@ type hook_state_t = {
 
   member_hook:
      (Context.t ->
-      string -> Loc.t -> Type.t ->
+      Utils_js.name -> Loc.t -> Type.t ->
       bool);
 
 (* TODO: This is inconsistent with the way the id/member hooks work, but we
@@ -94,7 +94,7 @@ type hook_state_t = {
 
   jsx_hook:
       (Context.t ->
-       string -> Loc.t -> Type.t ->
+       Utils_js.name -> Loc.t -> Type.t ->
        bool);
 }
 

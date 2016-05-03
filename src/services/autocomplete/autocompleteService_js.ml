@@ -27,7 +27,7 @@ type func_details_result = {
 type complete_autocomplete_result = {
     res_loc      : Loc.t;
     res_ty       : string;
-    res_name     : string;
+    res_name     : name;
     func_details : func_details_result option;
   }
 
@@ -47,7 +47,10 @@ let autocomplete_result_to_json loc_preprocessor result =
      | None -> Hh_json.JSON_Null
   in
   let loc = loc_preprocessor result.res_loc in
-  let name = result.res_name in
+  let name = match result.res_name with
+  | InternalName name -> name
+  | ExternalName name -> name
+  in
   let ty = result.res_ty in
   Hh_json.JSON_Object (
     ("name", Hh_json.JSON_String name) ::
@@ -61,7 +64,7 @@ let print_type cx type_ =
   then string_of_t cx type_
   else ""
 
-let rec autocomplete_create_result cx name type_ loc =
+let rec autocomplete_create_result cx (name: Utils_js.name) type_ loc =
   Type.(match type_ with
   | FunT (_, _, _, {params_tlist = params;
                     params_names = pnames;
@@ -99,17 +102,18 @@ let rec autocomplete_create_result cx name type_ loc =
         func_details = None }
   )
 
-let autocomplete_filter_members members =
-  SMap.filter (fun key _ ->
-    (* This is really for being better safe than sorry. It shouldn't happen. *)
-    not (is_autocomplete key)
-    &&
-    (* filter out constructor, it shouldn't be called manually *)
-    not (key = "constructor")
-    &&
+let autocomplete_filter_members (members: 'a NameMap.t) =
+  NameMap.filter (fun key _ ->
+    match key with
     (* strip out members from prototypes which are implicity created for
        internal reasons *)
-    not (is_internal_name key)
+    | InternalName _ -> false
+    | ExternalName key_str ->
+      (* This is really being better safe than sorry. It shouldn't happen. *)
+      not (is_autocomplete key)
+      &&
+      (* filter out constructor, it shouldn't be called manually *)
+      not (key_str = "constructor")
   ) members
 
 let autocomplete_member
@@ -117,7 +121,7 @@ let autocomplete_member
   client_logging_context
   cx
   this
-  ac_name
+  (ac_name: name)
   ac_loc
   docblock = Flow_js.(
 
@@ -130,7 +134,7 @@ let autocomplete_member
   let open Hh_json in
 
   let json_data_list = [
-    "ac_name", JSON_String ac_name;
+    "ac_name", JSON_String (match ac_name with InternalName x | ExternalName x -> x);
     "ac_loc", JSON_Object (Errors_js.deprecated_json_props_of_loc ac_loc);
     "loc", Reason_js.json_of_loc ac_loc;
     "docblock", Docblock.json_of_docblock docblock;
@@ -153,45 +157,39 @@ let autocomplete_member
 
   match Autocomplete.command_result_of_member_result result with
   | Err error -> Err error
-  | OK result_map ->
+  | OK (result_map: Type.t NameMap.t) ->
     OK (
       result_map
       |> autocomplete_filter_members
-      |> SMap.mapi (fun name t ->
+      |> NameMap.mapi (fun name t ->
           let loc = Type.loc_of_t t in
           let gt = Type_normalizer.normalize_type cx t in
           autocomplete_create_result cx name gt loc
         )
-      |> SMap.values
+      |> NameMap.values
       |> List.rev
     )
 )
 
 (* env is all visible bound names at cursor *)
-let autocomplete_id cx env =
-  let result = SMap.fold (fun name entry acc ->
-    (* Filter out internal environment variables except for this and
-       super. *)
-    let is_this = name = (internal_name "this") in
-    let is_super = name = (internal_name "super") in
-    if not (is_this || is_super) && is_internal_name name
-    then acc
-    else (
-      let (loc, name) =
-        (* renaming of this/super *)
-        if is_this
-        then (Loc.none, "this")
-        else if is_super
-        then (Loc.none, "super")
-        else (Scope.Entry.loc entry, name)
-      in
-
+let autocomplete_id cx (env: Scope.Entry.t NameMap.t) =
+  let result = NameMap.fold (fun name entry acc ->
+    (* Filter out internal environment variables except for this and super. *)
+    let loc_and_name =
+      match name with
+      | InternalName "this" -> Some (Loc.none, name)
+      | InternalName "super" -> Some (Loc.none, name)
+      | InternalName _ -> None
+      | ExternalName _ -> Some (Scope.Entry.loc entry, name)
+    in
+    match loc_and_name with
+    | Some (loc, name) ->
       let type_ = Scope.Entry.actual_type entry in
       let type_ = Type_normalizer.normalize_type cx type_ in
       let result =
         autocomplete_create_result cx name type_ loc in
       result :: acc
-    )
+    | None -> acc
   ) env [] in
   OK result
 
@@ -204,10 +202,14 @@ let autocomplete_jsx
   client_logging_context
   cx
   cls
-  ac_name
+  (ac_name: name)
   ac_loc
   parse_result = Flow_js.(
-    let reason = Reason_js.mk_reason ac_name ac_loc in
+    let reason_str = match ac_name with
+    | InternalName x -> x
+    | ExternalName x -> x
+    in
+    let reason = Reason_js.mk_reason reason_str ac_loc in
     let component_instance = mk_instance cx reason cls in
     let props_object = mk_tvar_where cx reason (fun tvar ->
       flow cx (

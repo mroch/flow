@@ -154,8 +154,8 @@ let in_generator_scope () =
    shadowing is properly maintained *)
 let all_entries () =
   List.fold_left (fun entries scope ->
-    SMap.union scope.entries entries
-  ) SMap.empty (List.rev !scopes)
+    NameMap.union scope.entries entries
+  ) NameMap.empty (List.rev !scopes)
 
 (* whole env *)
 

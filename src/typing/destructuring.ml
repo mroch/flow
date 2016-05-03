@@ -76,7 +76,13 @@ and extract_arr_elem_pattern_bindings accum = Ast.Pattern.(function
     trigger whenever a result is needed, e.g., to interact in flows with other
     lower and upper bounds). **)
 
-let rec destructuring ?parent_pattern_t cx curr_t init default f =
+let rec destructuring
+    ?parent_pattern_t
+    (cx: Context.t)
+    (curr_t: Type.t)
+    init
+    default
+    (f: Context.t -> Loc.t -> Utils_js.name -> Type.t option -> Type.t) =
   Ast.Pattern.(function
   | _, Array { Array.elements; _; } -> Array.(
       elements |> List.iteri (fun i -> function
@@ -221,8 +227,12 @@ let type_of_pattern = Ast.Pattern.(function
 )
 (* instantiate pattern visitor for assignments *)
 let destructuring_assignment cx rhs_t init =
-  destructuring cx rhs_t (Some init) None (fun cx loc name _default t ->
+  destructuring cx rhs_t (Some init) None (fun cx loc (name: Utils_js.name) _default t ->
     (* TODO destructuring+defaults unsupported in assignment expressions *)
-    let reason = mk_reason (spf "assignment of identifier `%s`" name) loc in
+    let str = match name with
+    | InternalName x -> x
+    | ExternalName x -> x
+    in
+    let reason = mk_reason (spf "assignment of identifier `%s`" str) loc in
     ignore Env.(set_var cx name t reason)
   )

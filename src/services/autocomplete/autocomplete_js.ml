@@ -8,25 +8,29 @@
  *
  *)
 
+open Utils_js
+
 type autocomplete_type =
-| Acid of Scope.Entry.t SMap.t
+| Acid of Scope.Entry.t NameMap.t
 | Acmem of Type.t
 | Acjsx of Type.t
 
 type autocomplete_state = {
-  ac_name: string;
+  ac_name: name;
   ac_loc: Loc.t;
   ac_type: autocomplete_type;
 }
 
 let autocomplete_suffix = "AUTO332"
 let suffix_len = String.length autocomplete_suffix
-let is_autocomplete x =
+let is_autocomplete = function
+| InternalName x
+| ExternalName x ->
   String.length x >= suffix_len &&
   let suffix = String.sub x (String.length x - suffix_len) suffix_len in
   suffix = autocomplete_suffix
 
-let autocomplete_id state _cx ac_name ac_loc =
+let autocomplete_id state _cx (ac_name: name) ac_loc =
   if is_autocomplete ac_name
   then (
     state := Some ({

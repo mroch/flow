@@ -24,7 +24,7 @@ val string_of_env: Context.t -> t -> string
 val in_async_scope: unit -> bool
 val in_generator_scope: unit -> bool
 
-val all_entries: unit -> Entry.t SMap.t
+val all_entries: unit -> Entry.t Utils_js.NameMap.t
 
 val peek_frame: unit -> int
 
@@ -108,7 +108,7 @@ val get_current_env_refi: Key.t -> Scope.refi_binding option
 val get_var:
   ?lookup_mode:LookupMode.t ->
   Context.t ->
-  string ->
+  Utils_js.name ->
   reason ->
   Type.t
 
@@ -126,7 +126,11 @@ val var_ref:
   reason ->
   Type.t
 
-val set_var: Context.t -> string -> Type.t -> reason ->
+val set_var:
+  Context.t ->
+  Utils_js.name ->
+  Type.t ->
+  reason ->
   Changeset.EntryRef.t option
 
 val set_expr: Key.t -> reason -> Type.t -> Type.t ->

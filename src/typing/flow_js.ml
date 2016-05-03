@@ -6145,7 +6145,7 @@ module Autocomplete : sig
     | FailureUnhandledType of Type.t
 
   val command_result_of_member_result: member_result ->
-    (Type.t SMap.t, string) ok_or_err
+    (Type.t NameMap.t, string) ok_or_err
 
   val extract_members: Context.t -> Type.t -> member_result
 
