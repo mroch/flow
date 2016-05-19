@@ -493,7 +493,8 @@ and Expression : sig
     | Spread of SpreadElement.t
 
   module Array : sig
-    type t = {
+    type t = Loc.t * t'
+    and t' = {
       elements: expression_or_spread option list;
     }
   end
@@ -509,7 +510,8 @@ and Expression : sig
         tail: bool;
       }
     end
-    type t = {
+    type t = Loc.t * t'
+    and t' = {
       quasis: Element.t list;
       expressions: Expression.t list;
     }
@@ -517,7 +519,7 @@ and Expression : sig
   module TaggedTemplate : sig
     type t = {
       tag: Expression.t;
-      quasi: Loc.t * TemplateLiteral.t;
+      quasi: TemplateLiteral.t;
     }
   end
   module Object : sig
@@ -552,7 +554,8 @@ and Expression : sig
     type property =
       | Property of Property.t
       | SpreadProperty of SpreadProperty.t
-    type t = {
+    type t = Loc.t * t'
+    and t' = {
       properties: property list;
     }
   end
@@ -719,8 +722,8 @@ and Expression : sig
   type t = Loc.t * t'
   and t' =
     | This
-    | Array of Array.t
-    | Object of Object.t
+    | Array of Array.t'
+    | Object of Object.t'
     | Function of Function.t
     | ArrowFunction of Function.t
     | Sequence of Sequence.t
@@ -739,7 +742,7 @@ and Expression : sig
     | Let of Let.t
     | Identifier of Identifier.t
     | Literal of Literal.t
-    | TemplateLiteral of TemplateLiteral.t
+    | TemplateLiteral of TemplateLiteral.t'
     | TaggedTemplate of TaggedTemplate.t
     | JSXElement of JSX.element
     | Class of Class.t
@@ -887,7 +890,8 @@ and Pattern : sig
     type element =
       | Element of Pattern.t
       | Spread of SpreadElement.t
-    type t = {
+    type t = Loc.t * t'
+    and t' = {
       elements: element option list;
       typeAnnotation: Type.annotation option;
     }
@@ -901,7 +905,7 @@ and Pattern : sig
   type t = Loc.t * t'
   and t' =
     | Object of Object.t
-    | Array of Array.t
+    | Array of Array.t'
     | Assignment of Assignment.t
     | Identifier of Identifier.t
     | Expression of Expression.t

@@ -41,6 +41,7 @@ type parse_options = {
 val default_parse_options : parse_options
 
 type env
+type error_callback
 
 (* constructor: *)
 val init_env :
@@ -74,14 +75,14 @@ val source : env -> Loc.filename option
 val should_parse_types : env -> bool
 
 (* mutators: *)
-val error_at : env -> Loc.t * Parse_error.t -> unit
+val error_at : env -> Loc.t * Parse_error.t -> env
 val comment_list : env -> Comment.t list -> unit
-val error_list : env -> (Loc.t * Parse_error.t) list -> unit
+val error_list : env -> (Loc.t * Parse_error.t) list -> env
 val push_lex_mode : env -> lex_mode -> unit
 val pop_lex_mode : env -> unit
 val double_pop_lex_mode : env -> unit
 val set_lex_env : env -> lex_env -> unit
-val record_export: env -> Loc.t * string -> unit
+val record_export: env -> Loc.t * string -> env
 
 (* functional operations -- these return shallow copies, so future mutations to
  * the returned env will also affect the original: *)
@@ -95,12 +96,16 @@ val with_no_in : bool -> env -> env
 val with_in_switch : bool -> env -> env
 val with_in_export : bool -> env -> env
 val with_no_call : bool -> env -> env
-val with_error_callback : (env -> Parse_error.t -> unit) -> env -> env
-
-val without_error_callback : env -> env
+val with_error_callback :
+  (env -> Parse_error.t -> unit) ->
+  env ->
+  env * error_callback
+val without_error_callback : env -> env * error_callback
+val restore_error_callback : error_callback -> env -> env
 
 val add_label : env -> string -> env
 val enter_function : env -> async:bool -> generator:bool -> env
+val leave_function : prev_env:env -> env -> env
 
 module Try : sig
   type 'a parse_result =

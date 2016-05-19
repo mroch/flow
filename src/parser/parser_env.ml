@@ -170,7 +170,7 @@ type env = {
   no_let            : bool;
   allow_yield       : bool;
   allow_await       : bool;
-  error_callback    : (env -> Error.t -> unit) option;
+  error_callback    : error_callback;
   lex_mode_stack    : lex_mode list ref;
   (* lex_env is the lex_env after the single lookahead has been lexed *)
   lex_env           : lex_env ref;
@@ -180,6 +180,8 @@ type env = {
   parse_options     : parse_options;
   source            : Loc.filename option;
 }
+and error_callback' = (env -> Error.t -> unit) option
+and error_callback = error_callback'
 
 (* constructor *)
 let init_env ?(token_sink=None) ?(parse_options=None) source lb =
@@ -241,9 +243,11 @@ let should_parse_types env = env.parse_options.types
 (* mutators: *)
 let error_at env (loc, e) =
   env.errors := (loc, e) :: !(env.errors);
-  match env.error_callback with
+  begin match env.error_callback with
   | None -> ()
   | Some callback -> callback env e
+  end;
+  env
 let comment_list env =
   List.iter (fun c -> env.comments := c :: !(env.comments))
 let set_lex_env env lex_env =
@@ -253,7 +257,10 @@ let record_export env (loc, export_name) =
   let exports = !(env.exports) in
   if SSet.mem export_name exports
   then error_at env (loc, Error.DuplicateExport export_name)
-  else env.exports := SSet.add export_name !(env.exports)
+  else begin
+    env.exports := SSet.add export_name !(env.exports);
+    env
+  end
 
 (* lookahead: *)
 let lookahead ?(i=0) env =
@@ -279,10 +286,14 @@ let with_in_switch in_switch env = { env with in_switch }
 let with_in_export in_export env = { env with in_export }
 let with_no_call no_call env = { env with no_call }
 let with_error_callback error_callback env =
-  { env with error_callback = Some error_callback }
+  { env with error_callback = Some error_callback }, env.error_callback
+let without_error_callback env =
+  { env with error_callback = None }, env.error_callback
+let restore_error_callback error_callback env =
+  { env with error_callback }
 
 (* other helper functions: *)
-let error_list env = List.iter (error_at env)
+let error_list env errors = List.fold_left error_at env errors
 let last_loc env = match !(env.last) with
   | None -> None
   | Some (_, result) -> Some result.lex_loc
@@ -326,7 +337,7 @@ let advance env (lex_env, lex_result) =
     lex_in_comment_syntax = lex_result.lex_result_in_comment_syntax
   };
 
-  error_list env lex_result.lex_errors;
+  let env = error_list env lex_result.lex_errors in
   comment_list env lex_result.lex_comments;
   env.last := Some (lex_env, lex_result);
   match !(env.lookahead) with
@@ -351,8 +362,6 @@ let double_pop_lex_mode env =
   env.lex_mode_stack := new_stack;
   env.lookahead := None
 
-let without_error_callback env = { env with error_callback = None }
-
 let add_label env label = { env with labels = SSet.add label env.labels }
 let enter_function env ~async ~generator = { env with
     in_function = true;
@@ -361,6 +370,14 @@ let enter_function env ~async ~generator = { env with
     labels = SSet.empty;
     allow_await = async;
     allow_yield = generator;
+  }
+let leave_function ~prev_env env = { env with
+    in_function = prev_env.in_function;
+    in_loop = prev_env.in_loop;
+    in_switch = prev_env.in_switch;
+    labels = prev_env.labels;
+    allow_await = prev_env.allow_await;
+    allow_yield = prev_env.allow_yield;
   }
 
 (* This module allows you to try parsing and rollback if you need. This is not
