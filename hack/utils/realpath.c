@@ -15,6 +15,11 @@
 #include <limits.h>
 #include <stdlib.h>
 
+#ifdef __APPLE__
+#include <fcntl.h> // for open, fcntl, F_GETPATH, O_EVTONLY, O_SYMLINK
+#include <unistd.h> // for close
+#endif
+
 #define Val_none Val_int(0)
 
 static value
@@ -25,6 +30,26 @@ Val_some( value v )
   some = caml_alloc(1, 0);
   Store_field( some, 0, v );
   CAMLreturn( some );
+}
+
+CAMLprim value
+hh_normpath(value input) {
+#ifdef __APPLE__
+  CAMLparam1(input);
+  CAMLlocal1(output);
+  char result[PATH_MAX];
+  output = input;
+  int fd = open(String_val(input), O_EVTONLY | O_SYMLINK);
+  if (fd != -1) {
+    if (fcntl(fd, F_GETPATH, result) != -1) {
+      output = caml_copy_string(result);
+    }
+    close(fd);
+  }
+  CAMLreturn(output);
+#else
+  return input;
+#endif
 }
 
 CAMLprim value

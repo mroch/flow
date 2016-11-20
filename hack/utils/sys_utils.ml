@@ -12,6 +12,7 @@ open Core
 
 exception NotADirectory of string
 
+external normpath: string -> string = "hh_normpath"
 external realpath: string -> string option = "hh_realpath"
 external is_nfs: string -> bool = "hh_is_nfs"
 

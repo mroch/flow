@@ -309,27 +309,9 @@ let rec dir_exists dir =
 
 (* when system is case-insensitive, do our own file exists check *)
 and file_exists path =
-  (* case doesn't matter for "/", ".", "..." and these serve as a base-case for
-   * case-insensitive filesystems *)
-  let dir = Filename.dirname path in
-  if (
-    case_sensitive
-    || path = Filename.current_dir_name
-    || path = Filename.parent_dir_name
-    || path = dir
-  ) then Sys.file_exists path
-  else (
-    let files = match SMap.get dir !files_in_dir with
-    | Some files -> files
-    | None ->
-        let files =
-          if dir_exists dir
-          then set_of_list (Array.to_list (Sys.readdir dir))
-          else SSet.empty in
-        files_in_dir := SMap.add dir files !files_in_dir;
-        files
-    in SSet.mem (Filename.basename path) files
-  )
+  Sys.file_exists path &&
+    let path' = Sys_utils.normpath path in
+    path == path' || Filename.basename path = Filename.basename path'
 
 let resolve_symlinks path =
   Path.to_string (Path.make path)

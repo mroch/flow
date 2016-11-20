@@ -4,3 +4,8 @@ function hh_realpath(path) {
   // (via `Path.make`) completely.
   return 0; // `None`
 }
+
+//Provides: hh_normpath
+function hh_normpath(path) {
+  return path;
+}
