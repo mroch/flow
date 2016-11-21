@@ -40,7 +40,7 @@ open Utils_js
        the value is the subset of files which require that module directly
    (3) a subset of those files that phantom depend on root_fileset
  *)
-let calc_dep_utils workers fileset root_fileset = Module_js.(
+let calc_dep_utils workers fileset (root_fileset: unit File_trie.t) = Module_js.(
   (* Distribute work, looking up InfoHeap once per file. *)
   let job = List.fold_left (fun (modules, rdmap, resolution_path_files) f ->
     let info = get_module_info ~audit:Expensive.ok f in
@@ -72,10 +72,10 @@ let calc_dep_utils workers fileset root_fileset = Module_js.(
        `resolution_path_files`. These are considered direct dependencies (in
        addition to others computed by direct_deps downstream). *)
     let resolution_path_files =
-      if info.phantom_dependents |> SSet.exists (fun f ->
-        FilenameSet.mem (Loc.SourceFile f) root_fileset ||
-        FilenameSet.mem (Loc.JsonFile f) root_fileset ||
-        FilenameSet.mem (Loc.ResourceFile f) root_fileset
+      if info.phantom_dependents |> File_trie.exists (fun (_, f) _ ->
+        File_trie.mem (File_trie.Source, f) root_fileset ||
+        File_trie.mem (File_trie.Json, f) root_fileset ||
+        File_trie.mem (File_trie.Resource, f) root_fileset
       ) then FilenameSet.add f resolution_path_files
       else resolution_path_files in
     modules, rdmap, resolution_path_files
@@ -162,15 +162,16 @@ let dependent_files workers unmodified_files inferred_files removed_modules =
   (* touched_modules includes removed modules and those provided by new files *)
   (** [shared mem access] InfoHeap.get on inferred_files for ._module **)
   let touched_modules = Module_js.(NameSet.union removed_modules (
+    let file_list = File_trie.bindings inferred_files |> List.map fst in
     MultiWorker.call workers
-      ~job: (List.fold_left (fun mods file ->
+      ~job: (List.fold_left (fun mods (file: File_trie.kind * File_trie.key) ->
         let file_mods = get_module_names ~audit:Expensive.ok file in
         (* Add all module names exported by file *)
         List.fold_left (fun acc m -> NameSet.add m acc) mods file_mods
       ))
       ~neutral: NameSet.empty
       ~merge: NameSet.union
-      ~next: (MultiWorker.next workers (FilenameSet.elements inferred_files))
+      ~next: (MultiWorker.next workers file_list)
   )) in
 
   (* files that require touched modules directly, or may resolve to

@@ -18,7 +18,7 @@ type info = {
   required: NameSet.t;      (* required module names *)
   require_loc: Loc.t SMap.t;  (* statement locations *)
   resolved_modules: Modulename.t SMap.t;
-  phantom_dependents: SSet.t;
+  phantom_dependents: unit File_trie.t;
   checked: bool;            (* in flow? *)
   parsed: bool;             (* if false, it's a tracking record only *)
 }
@@ -31,7 +31,7 @@ val exported_module:
   filename -> Docblock.t -> Modulename.t
 val imported_module:
   options: Options.t ->
-  Context.t -> Loc.t -> ?path_acc: SSet.t ref -> string -> Modulename.t
+  Context.t -> Loc.t -> ?path_acc: unit File_trie.t ref -> string -> Modulename.t
 
 val find_resolved_module:
   (options: Options.t ->

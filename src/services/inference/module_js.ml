@@ -48,10 +48,11 @@ type info = {
   require_loc: Loc.t SMap.t; (* statement locations *)
   resolved_modules: Modulename.t SMap.t; (* map from module references in file
                                             to module names they resolve to *)
-  phantom_dependents: SSet.t; (* set of paths that were looked up but not found
-                                 when resolving module references in the file:
-                                 when the paths come into existence, the module
-                                 references need to be re-resolved. *)
+  phantom_dependents: unit File_trie.t;
+    (* set of paths that were looked up but not found
+       when resolving module references in the file:
+       when the paths come into existence, the module
+       references need to be re-resolved. *)
   checked: bool; (* in flow? *)
   parsed: bool; (* if false, it's a tracking record only *)
 }
@@ -263,7 +264,7 @@ module type MODULE_SYSTEM = sig
   val imported_module:
     options: Options.t ->
     Context.t -> Loc.t ->
-    ?path_acc:SSet.t ref ->
+    ?path_acc:unit File_trie.t ref ->
     string -> Modulename.t
 
   (* for a given module name, choose a provider from among a set of
@@ -355,7 +356,9 @@ module Node = struct
 
   let record_path path = function
     | None -> ()
-    | Some paths -> paths := SSet.add path !paths
+    | Some paths ->
+        let x = Str.split (Str.regexp "/") path in
+        paths := File_trie.add (File_trie.Unknown, x) () !paths
 
   let path_if_exists =
     let path_exists ~options path =
@@ -633,7 +636,7 @@ let imported_modules ~options cx =
      containing the resolved names. *)
   let reqs = Context.required cx in
   let req_locs = Context.require_loc cx in
-  let path_acc = ref SSet.empty in
+  let path_acc = ref File_trie.empty in
   let set, map = SSet.fold (fun r (set, map) ->
     let loc = SMap.find_unsafe r req_locs in
     let resolved_r = imported_module ~options cx loc ~path_acc r in
@@ -722,13 +725,34 @@ let get_file ~audit m =
   | None -> failwith
       (spf "file name not found for module %s" (Modulename.to_string m))
 
-let get_module_info ~audit f =
+(* let filename_of_trie_key (kind, path) =
+  let filename = String.concat Filename.dir_sep path in
+  match kind with
+  | File_trie.Lib -> Loc.LibFile filename
+  | File_trie.Source -> Loc.SourceFile filename
+  | File_trie.Json -> Loc.JsonFile filename
+  | File_trie.Resource -> Loc.ResourceFile filename
+  | File_trie.Unknown -> Loc.LibFile filename
+
+let trie_key_of_filename filename =
+  let kind, filename = match filename with
+  | Loc.LibFile filename -> File_trie.Lib, filename
+  | Loc.SourceFile filename -> File_trie.Source, filename
+  | Loc.JsonFile filename -> File_trie.Json, filename
+  | Loc.ResourceFile filename -> File_trie.Resource, filename
+  | Loc.Builtins -> failwith "Didn't expect to see builtins here"
+  in
+  let parts = Str.split (Str.regexp_string Filename.dir_sep) filename in
+  kind, parts *)
+
+let get_module_info ~audit (f: Loc.filename) =
   match get_info ~audit f with
   | Some info -> info
-  | None -> failwith
+  | None ->
+    failwith
       (spf "module info not found for file %s" (string_of_filename f))
 
-let get_module_names ~audit f =
+let get_module_names ~audit (f: Loc.filename) =
   let { _module; _ } = get_module_info ~audit f in
   match _module with
   | Modulename.Filename file when file = f ->
@@ -816,7 +840,7 @@ let add_unparsed_info ~audit ~options file docblock =
     required = NameSet.empty;
     require_loc = SMap.empty;
     resolved_modules = SMap.empty;
-    phantom_dependents = SSet.empty;
+    phantom_dependents = File_trie.empty;
   } in
   add_info ~audit file info
 
