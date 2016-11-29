@@ -326,14 +326,16 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
 
   let find_module ~options (moduleref, filename) oc =
     let file = Loc.SourceFile filename in
-    let metadata = Context.({ (metadata_of_options options) with
-      checked = false;
-    }) in
-    let cx = Context.make metadata file (Modulename.Filename file) in
     let loc = {Loc.none with Loc.source = Some file;} in
-    let module_name = Module_js.imported_module ~options cx loc moduleref in
+    let module_name = Module_js.imported_module ~options file loc moduleref in
     let response: filename option =
-      Module_js.get_module_file ~audit:Expensive.warn module_name in
+      match module_name with
+      | OK module_name ->
+        Module_js.get_module_file ~audit:Expensive.warn module_name
+      | Err _ ->
+        (* TODO: return error to client *)
+        None
+    in
     Marshal.to_channel oc response [];
     flush oc
 

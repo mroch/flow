@@ -31,7 +31,11 @@ val exported_module:
   filename -> Docblock.t -> Modulename.t
 val imported_module:
   options: Options.t ->
-  Context.t -> Loc.t -> ?path_acc: SSet.t ref -> string -> Modulename.t
+  Loc.filename ->
+  Loc.t ->
+  ?path_acc: SSet.t ref ->
+  string ->
+  (Modulename.t, Flow_error.error_message) Utils_js.ok_or_err
 
 val find_resolved_module:
   (options: Options.t ->

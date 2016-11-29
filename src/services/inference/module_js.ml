@@ -261,9 +261,9 @@ module type MODULE_SYSTEM = sig
      record paths that were looked up but not found during resolution. *)
   val imported_module:
     options: Options.t ->
-    Context.t -> Loc.t ->
+    Loc.filename -> Loc.t ->
     ?path_acc:SSet.t ref ->
-    string -> Modulename.t
+    string -> (Modulename.t, Flow_error.error_message) ok_or_err
 
   (* for a given module name, choose a provider from among a set of
     files with that exported name. also check for duplicates and
@@ -337,12 +337,14 @@ let resolve_symlinks path =
  * Given a list of lazy "option" expressions, evaluate each in the list
  * sequentially until one produces a `Some` (and do not evaluate any remaining).
  *)
-let lazy_seq: 'a option Lazy.t list -> 'a option =
+type path_or_err = (string, Flow_error.error_message) ok_or_err
+let lazy_seq: path_or_err option Lazy.t list -> path_or_err option =
   List.fold_left (fun acc lazy_expr ->
     match acc with
     | None -> Lazy.force lazy_expr
     | Some _ -> acc
   ) None
+
 
 (*******************************)
 
@@ -369,57 +371,63 @@ module Node = struct
       then Some path
       else (record_path path path_acc; None)
 
+  (* path_if_exists never errors, so wrap it in OK *)
+  let path_if_exists_or_err ~options path_acc path : path_or_err option =
+    match path_if_exists ~options path_acc path with
+    | Some x -> Some (OK x)
+    | None -> None
+
   let path_if_exists_with_file_exts ~options path_acc path file_exts =
     lazy_seq (file_exts |> List.map (fun ext ->
-      lazy (path_if_exists ~options path_acc (path ^ ext))
+      lazy (path_if_exists_or_err ~options path_acc (path ^ ext))
     ))
 
-  let parse_main ~options cx loc path_acc package file_exts =
+  let parse_main ~options loc path_acc package file_exts : path_or_err option =
     let package = resolve_symlinks package in
     if not (file_exists package) || (Files.is_ignored options package)
     then None
-    else
-      let tokens = match PackageHeap.get package with
-      | Some tokens -> tokens
-      | None ->
-        let project_root = Options.root options in
-        let msg =
-          let is_included = Files.is_included options package in
-          let project_root_str = Path.to_string project_root in
-          let is_contained_in_root =
-            Files.is_prefix project_root_str package
-          in
-          let package_relative_to_root =
-            spf "<<PROJECT_ROOT>>%s%s"
-              (Filename.dir_sep)
-              (Files.relative_path project_root_str package)
-          in
-          if is_included || is_contained_in_root then (
-            FlowError.(EInternal (loc, PackageHeapNotFound package_relative_to_root))
-          ) else (
-            FlowError.EModuleOutsideRoot (loc, package_relative_to_root)
-          )
-        in
-        FlowError.add_output cx msg;
-        SMap.empty
-      in
-      let dir = Filename.dirname package in
-      match get_key "main" tokens with
+    else match PackageHeap.get package with
+    | Some tokens ->
+      (* check to see if the file from the "main" property exists *)
+      begin match get_key "main" tokens with
       | None -> None
       | Some file ->
+        let dir = Filename.dirname package in
         let path = Files.normalize_path dir file in
         let path_w_index = Filename.concat path "index" in
 
         lazy_seq [
-          lazy (path_if_exists ~options path_acc path);
+          lazy (path_if_exists_or_err ~options path_acc path);
           lazy (path_if_exists_with_file_exts ~options path_acc path file_exts);
           lazy (path_if_exists_with_file_exts ~options path_acc path_w_index file_exts);
         ]
+      end
+    | None ->
+      (* return an error *)
+      let project_root = Options.root options in
+      let msg =
+        let is_included = Files.is_included options package in
+        let project_root_str = Path.to_string project_root in
+        let is_contained_in_root =
+          Files.is_prefix project_root_str package
+        in
+        let package_relative_to_root =
+          spf "<<PROJECT_ROOT>>%s%s"
+            (Filename.dir_sep)
+            (Files.relative_path project_root_str package)
+        in
+        if is_included || is_contained_in_root then (
+          FlowError.(EInternal (loc, PackageHeapNotFound package_relative_to_root))
+        ) else (
+          FlowError.EModuleOutsideRoot (loc, package_relative_to_root)
+        )
+      in
+      Some (Err msg)
 
-  let resolve_relative ~options cx loc ?path_acc root_path rel_path =
+  let resolve_relative ~options loc ?path_acc root_path rel_path =
     let path = Files.normalize_path root_path rel_path in
     if Files.is_flow_file ~options path
-    then path_if_exists ~options path_acc path
+    then path_if_exists_or_err ~options path_acc path
     else (
       let path_w_index = Filename.concat path "index" in
       (* We do not try resource file extensions here. So while you can write
@@ -428,28 +436,30 @@ module Node = struct
       let file_exts = Options.module_file_exts options
         |> SSet.elements in
 
-      lazy_seq ([
+      lazy_seq [
         lazy (path_if_exists_with_file_exts ~options path_acc path file_exts);
-        lazy (parse_main ~options cx loc path_acc (Filename.concat path "package.json") file_exts);
+        lazy (parse_main ~options loc path_acc (Filename.concat path "package.json") file_exts);
         lazy (path_if_exists_with_file_exts ~options path_acc path_w_index file_exts);
-      ])
+      ]
     )
 
-  let rec node_module ~options cx loc path_acc dir r =
+  let rec node_module ~options loc path_acc dir r =
     lazy_seq [
       lazy (
-        lazy_seq (Options.node_resolver_dirnames options |> List.map (fun dirname ->
+        Options.node_resolver_dirnames options
+        |> List.map (fun dirname ->
           lazy (resolve_relative
             ~options
-            cx loc ?path_acc dir (spf "%s%s%s" dirname Filename.dir_sep r)
+            loc ?path_acc dir (spf "%s%s%s" dirname Filename.dir_sep r)
           )
-        ))
+        )
+        |> lazy_seq
       );
 
       lazy (
         let parent_dir = Filename.dirname dir in
         if dir = parent_dir then None
-        else node_module ~options cx loc path_acc (Filename.dirname dir) r
+        else node_module ~options loc path_acc (Filename.dirname dir) r
       );
     ]
 
@@ -460,26 +470,30 @@ module Node = struct
     Str.string_match Files.current_dir_name r 0
     || Str.string_match Files.parent_dir_name r 0
 
-  let resolve_import ~options cx loc ?path_acc import_str =
-    let file = string_of_filename (Context.file cx) in
+  let resolve_import ~options filename loc ?path_acc import_str =
+    let file = string_of_filename filename in
     let dir = Filename.dirname file in
     if explicitly_relative import_str || absolute import_str
-    then resolve_relative ~options cx loc ?path_acc dir import_str
-    else node_module ~options cx loc path_acc dir import_str
+    then resolve_relative ~options loc ?path_acc dir import_str
+    else node_module ~options loc path_acc dir import_str
 
-  let imported_module ~options cx loc ?path_acc import_str =
+  let imported_module ~options filename loc ?path_acc import_str =
     let candidates = module_name_candidates ~options import_str in
 
     let rec choose_candidate = function
       | [] -> None
       | candidate :: candidates ->
-        match resolve_import ~options cx loc ?path_acc candidate with
+        match resolve_import ~options filename loc ?path_acc candidate with
         | None -> choose_candidate candidates
         | Some _ as result -> result
     in
     match choose_candidate candidates with
-    | Some str -> Modulename.Filename (Files.filename_from_string ~options str)
-    | None -> Modulename.String import_str
+    | Some (OK str) ->
+        OK (Modulename.Filename (Files.filename_from_string ~options str))
+    | Some (Err msg) ->
+        Err msg
+    | None ->
+        OK (Modulename.String import_str)
 
   (* in node, file names are module names, as guaranteed by
      our implementation of exported_name, so anything but a
@@ -544,18 +558,18 @@ module Haste: MODULE_SYSTEM = struct
         )
 
   (* similar to Node resolution, with possible special cases *)
-  let resolve_import ~options cx loc ?path_acc r =
-    let file = string_of_filename (Context.file cx) in
+  let resolve_import ~options filename loc ?path_acc r =
+    let file = string_of_filename filename in
     lazy_seq [
-      lazy (Node.resolve_import ~options cx loc ?path_acc r);
+      lazy (Node.resolve_import ~options filename loc ?path_acc r);
       lazy (match expanded_name r with
         | Some r ->
-          Node.resolve_relative ~options cx loc ?path_acc (Filename.dirname file) r
+          Node.resolve_relative ~options loc ?path_acc (Filename.dirname file) r
         | None -> None
       );
     ]
 
-  let imported_module ~options cx loc ?path_acc imported_name =
+  let imported_module ~options filename loc ?path_acc imported_name =
     let candidates = module_name_candidates ~options imported_name in
 
     (**
@@ -570,10 +584,13 @@ module Haste: MODULE_SYSTEM = struct
      *)
     let chosen_candidate = List.hd candidates in
 
-    match resolve_import ~options cx loc ?path_acc chosen_candidate with
-    | Some name ->
-        Modulename.Filename (Files.filename_from_string ~options name)
-    | None -> Modulename.String chosen_candidate
+    match resolve_import ~options filename loc ?path_acc chosen_candidate with
+    | Some (OK name) ->
+        OK (Modulename.Filename (Files.filename_from_string ~options name))
+    | Some (Err msg) ->
+        Err msg
+    | None ->
+        OK (Modulename.String chosen_candidate)
 
   (* in haste, many files may provide the same module. here we're also
      supporting the notion of mock modules - allowed duplicates used as
@@ -619,9 +636,9 @@ let exported_module ~options file info =
   let module M = (val (get_module_system options)) in
   M.exported_module file info
 
-let imported_module ~options cx loc ?path_acc r =
+let imported_module ~options filename loc ?path_acc r =
   let module M = (val (get_module_system options)) in
-  M.imported_module ~options cx loc ?path_acc r
+  M.imported_module ~options filename loc ?path_acc r
 
 let imported_modules ~options cx =
   (* Resolve all reqs relative to the given cx. Accumulate dependent paths in
@@ -632,8 +649,13 @@ let imported_modules ~options cx =
   let path_acc = ref SSet.empty in
   let set, map = SSet.fold (fun r (set, map) ->
     let loc = SMap.find_unsafe r req_locs in
-    let resolved_r = imported_module ~options cx loc ~path_acc r in
-    NameSet.add resolved_r set, SMap.add r resolved_r map
+    match imported_module ~options (Context.file cx) loc ~path_acc r with
+    | OK resolved_r ->
+      NameSet.add resolved_r set, SMap.add r resolved_r map
+    | Err msg ->
+      Flow_error.add_output cx msg;
+      let resolved_r = Modulename.String r in
+      NameSet.add resolved_r set, SMap.add r resolved_r map
   ) reqs (NameSet.empty, SMap.empty) in
   set, map, !path_acc
 
@@ -648,7 +670,11 @@ let find_resolved_module ~audit ~options cx loc r =
   let context_file = Context.file cx in
   match cached_resolved_module ~audit context_file r with
   | Some resolved_r -> resolved_r
-  | None -> imported_module ~options cx loc r
+  | None ->
+    begin match imported_module ~options context_file loc r with
+    | OK resolved_r -> resolved_r
+    | Err msg -> Flow_error.add_output cx msg; Modulename.String r
+    end
 
 let choose_provider ~options m files errmap =
   let module M = (val (get_module_system options)) in

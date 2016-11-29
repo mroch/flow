@@ -79,9 +79,15 @@ let getdef_get_result ~options cx state =
       ) in
       (* function just so we don't do the work unless it's actually needed. *)
       let get_imported_file () =
-        let filename = Module_js.get_module_file Expensive.warn (
-          Module_js.imported_module ~options cx require_loc name
-        ) in
+        let module_name = Module_js.imported_module
+          ~options (Context.file cx) require_loc name in
+        let filename = match module_name with
+        | OK module_name ->
+            Module_js.get_module_file Expensive.warn module_name
+        | Err msg ->
+            Flow_error.add_output cx msg;
+            None
+        in
         (match filename with
         | Some file -> Loc.({none with source = Some file;})
         | None -> Loc.none)
