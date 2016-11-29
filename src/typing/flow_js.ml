@@ -1008,6 +1008,10 @@ module ResolvableTypeJob = struct
     | IdxWrapper (_, t) ->
       collect_of_type ?log_unresolved cx reason acc t
 
+    | ReposT (_, (OpenT (_, id) as source)) ->
+      if IMap.mem id acc then acc
+      else IMap.add id (Binding source) acc
+
     | ReposT (_, t)
     | ReposUpperT (_, t) ->
       collect_of_type ?log_unresolved cx reason acc t
