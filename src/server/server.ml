@@ -459,13 +459,22 @@ module FlowProgram : Server.SERVER_PROGRAM = struct
          * are not kept track of. To avoid confusing results we notify the
          * client that these modules have not been processed.
          *)
-        let { Module_js.
-              required = requirements;
-              require_loc = req_locs;
-              checked; _ } =
+        let { Module_js.raw_require_locs; checked; _ } =
           Module_js.get_module_info ~audit:Expensive.warn file in
         if checked
         then
+          let resolve_import name loc (req_acc, loc_acc) =
+            match Module_js.imported_module ~options file loc name with
+            | OK module_name ->
+                Module_js.NameSet.add module_name req_acc,
+                SMap.add (Modulename.to_string module_name) loc loc_acc
+            | Err _ -> req_acc, loc_acc
+          in
+          let requirements, req_locs = SMap.fold
+            resolve_import
+            raw_require_locs
+            (Module_js.NameSet.empty, SMap.empty)
+          in
           (SMap.add module_name_str (requirements, req_locs) map, non_flow)
         else
           (map, SSet.add module_name_str non_flow)

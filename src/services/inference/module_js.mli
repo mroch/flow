@@ -15,8 +15,10 @@ module NameMap: MyMap.S with type key = Modulename.t
 
 type info = {
   _module: Modulename.t;    (* module name *)
-  required: NameSet.t;      (* required module names *)
+  deprecated_requires: NameSet.t;      (* required module names *)
+  raw_requires: SSet.t;     (* required module names *)
   require_loc: Loc.t SMap.t;  (* statement locations *)
+  raw_require_locs : Loc.t SMap.t;
   resolved_modules: Modulename.t SMap.t;
   phantom_dependents: SSet.t;
   checked: bool;            (* in flow? *)

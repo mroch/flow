@@ -43,8 +43,10 @@ module NameMap = MyMap.Make(Modulename)
 **)
 type info = {
   _module: Modulename.t; (* module name *)
-  required: NameSet.t; (* required module names *)
+  deprecated_requires: NameSet.t; (* required module names *)
+  raw_requires: SSet.t; (* required module names *)
   require_loc: Loc.t SMap.t; (* statement locations *)
+  raw_require_locs: Loc.t SMap.t;
   resolved_modules: Modulename.t SMap.t; (* map from module references in file
                                             to module names they resolve to *)
   phantom_dependents: SSet.t; (* set of paths that were looked up but not found
@@ -758,15 +760,22 @@ let get_module_names ~audit f =
   | _ ->
     [Modulename.Filename f; _module]
 
-let add_reverse_imports workers filenames =
+let add_reverse_imports ~options workers filenames =
   let calc_module_reqs_assoc =
     List.fold_left (fun module_reqs_assoc filename ->
-      let { _module = name; required = req; _ } =
+      let { _module = name; raw_requires; _ } =
         get_module_info ~audit:Expensive.ok filename in
       (* we only add requriements from actual module providers. this avoids
          strange states when two files provide the same module. *)
       match get_module_file Expensive.ok name with
-      | Some file when file = filename -> (name, req) :: module_reqs_assoc
+      | Some file when file = filename ->
+          let req = SSet.fold (fun name acc ->
+            let loc = { Loc.none with Loc.source = Some filename } in
+            match imported_module ~options filename loc name with
+            | OK module_name -> NameSet.add module_name acc
+            | Err _ -> acc
+          ) raw_requires NameSet.empty in
+          (name, req) :: module_reqs_assoc
       | _ -> module_reqs_assoc
     ) in
   let module_reqs_assoc = MultiWorker.call
@@ -794,8 +803,13 @@ let get_reverse_imports ~audit module_name =
 (* Extract and process information from context. In particular, resolve
    references to required modules in a file, and record the results.  *)
 let info_of ~options cx =
-  let required, resolved_modules, phantom_dependents =
+  let deprecated_requires, resolved_modules, phantom_dependents =
     imported_modules ~options cx in
+
+  prerr_endlinef "Required: %s\nResolved: %s"
+    (Context.required cx |> SSet.elements |> String.concat "; ")
+    (deprecated_requires |> NameSet.elements |> List.map Modulename.to_string |> String.concat ";");
+
   let require_loc = SMap.fold
     (fun r loc require_loc ->
       let resolved_r = SMap.find_unsafe r resolved_modules in
@@ -803,8 +817,10 @@ let info_of ~options cx =
     (Context.require_loc cx) SMap.empty in
   {
     _module = Context.module_name cx;
-    required;
+    deprecated_requires;
+    raw_requires = Context.required cx;
     require_loc;
+    raw_require_locs = Context.require_loc cx;
     resolved_modules;
     phantom_dependents;
     checked = Context.is_checked cx;
@@ -834,9 +850,12 @@ let add_unparsed_info ~audit ~options file docblock =
     Docblock.is_flow docblock ||
     Docblock.isDeclarationFile docblock
   in
-  let info = { _module; checked; parsed = false;
-    required = NameSet.empty;
+  let info = {
+    _module; checked; parsed = false;
+    deprecated_requires = NameSet.empty;
+    raw_requires = SSet.empty;
     require_loc = SMap.empty;
+    raw_require_locs = SMap.empty;
     resolved_modules = SMap.empty;
     phantom_dependents = SSet.empty;
   } in
@@ -1020,7 +1039,7 @@ let commit_modules workers ~options inferred removed =
     ~next: (MultiWorker.next workers replace);
 
   (* now that providers are updated, update reverse dependency info *)
-  add_reverse_imports workers inferred;
+  add_reverse_imports ~options workers inferred;
 
   if debug then prerr_endlinef "*** done committing modules ***";
   let providers = replace |> List.split |> snd in
@@ -1042,10 +1061,17 @@ let rec remove_files options workers files =
     ~job: (List.fold_left (fun acc file ->
       match get_info ~audit:Expensive.ok file with
       | Some info ->
-        let { _module; required; _ } = info in
-        let required_opt = match get_module_file ~audit:Expensive.ok _module with
-        | Some f when f = file -> Some required
-        | _ -> None
+        let { _module; raw_require_locs; _ } = info in
+        let required_opt =
+          match get_module_file ~audit:Expensive.ok _module with
+          | Some f when f = file ->
+            let resolve_import name loc acc =
+              match imported_module ~options file loc name with
+              | OK module_name -> NameSet.add module_name acc
+              | Err _ -> acc
+            in
+            Some (SMap.fold resolve_import raw_require_locs NameSet.empty)
+          | _ -> None
         in
         FilenameMap.add file (_module, required_opt) acc
       | None -> acc

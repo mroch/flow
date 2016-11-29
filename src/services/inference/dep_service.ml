@@ -67,7 +67,7 @@ let calc_dep_utils workers fileset root_fileset = Module_js.(
         | None -> singleton f
         | Some files -> add f files
       ) rdmap
-    ) info.required rdmap in
+    ) info.deprecated_requires rdmap in
     (* If f's phantom dependents are in root_fileset, then add f to
        `resolution_path_files`. These are considered direct dependencies (in
        addition to others computed by direct_deps downstream). *)
@@ -211,13 +211,13 @@ let calc_dependencies workers files =
   let deps = MultiWorker.call
     workers
     ~job: (List.fold_left (fun deps file ->
-      let { Module_js.required; _ } =
+      let { Module_js.deprecated_requires; _ } =
         Module_js.get_module_info ~audit:Expensive.ok file in
       let files = Module_js.NameSet.fold (fun r files ->
         match implementation_file ~audit:Expensive.ok r with
         | Some f -> FilenameSet.add f files
         | None -> files
-      ) required FilenameSet.empty in
+      ) deprecated_requires FilenameSet.empty in
       FilenameMap.add file files deps
     ))
     ~neutral: FilenameMap.empty

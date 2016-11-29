@@ -274,9 +274,9 @@ let heap_check ~audit files = Module_js.(
   ih |> Hashtbl.iter (fun _ info ->
     let parsed = info.Module_js.parsed in
     let checked = info.Module_js.checked in
-    let required = info.Module_js.required in
+    let required = info.Module_js.raw_requires in
     assert (parsed);
-    assert (checked || (NameSet.is_empty required));
+    assert (checked || (SSet.is_empty required));
   );
 )
 
