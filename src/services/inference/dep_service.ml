@@ -52,7 +52,9 @@ let calc_dep_utils workers fileset root_fileset = Module_js.(
        instead maintaining the map incrementally and hopefully reusing large
        parts of it.
     *)
-    let modules = FilenameMap.add f info._module modules in
+    (* TODO: stop building this map *)
+    let module_name = Modulename.Filename f in
+    let modules = FilenameMap.add f module_name modules in
     (* For every r in info.required, add f to the reverse dependency list for r,
        stored in `rdmap`. This will be used downstream when computing
        direct_deps, and also in dep_closure.
@@ -149,6 +151,7 @@ let dep_closure modules rdmap fileset =
    and the subset directly dependent on them.
 *)
 let dependent_files workers unmodified_files inferred_files removed_modules =
+  prerr_endline "FOOBAR";
   (* Get the modules provided by unmodified files, the reverse dependency map
      for unmodified files, and the subset of unmodified files whose resolution
      paths may encounter newly inferred modules. *)
@@ -164,7 +167,9 @@ let dependent_files workers unmodified_files inferred_files removed_modules =
   let touched_modules = Module_js.(NameSet.union removed_modules (
     MultiWorker.call workers
       ~job: (List.fold_left (fun mods file ->
-        let file_mods = get_module_names ~audit:Expensive.ok file in
+        (* TODO *)
+        (* let file_mods = get_module_names ~audit:Expensive.ok file in *)
+        let file_mods = [Modulename.Filename file] in
         (* Add all module names exported by file *)
         List.fold_left (fun acc m -> NameSet.add m acc) mods file_mods
       ))
@@ -202,6 +207,7 @@ let checked ~audit m = Module_js.(
    before any file that requires module r, so this notion naturally gives rise
    to a dependency ordering among files for merging. *)
 let implementation_file ~audit r = Module_js.(
+  Utils_js.prerr_endlinef "LOOKING FOR %s" (Modulename.to_string r);
   if module_exists r && checked ~audit r
   then Some (get_file ~audit r)
   else None
@@ -211,8 +217,9 @@ let calc_dependencies workers files =
   let deps = MultiWorker.call
     workers
     ~job: (List.fold_left (fun deps file ->
-      let { Module_js.required; _ } =
+      let { Module_js.required; resolved_modules; _ } =
         Module_js.get_module_info ~audit:Expensive.ok file in
+      Utils_js.prerr_endlinef "RESOLVED %s" (resolved_modules |> SMap.bindings |> List.map (fun (k, v) -> Utils_js.spf "%S -> %S" k (Modulename.to_string v)) |> String.concat "; ");
       let files = Module_js.NameSet.fold (fun r files ->
         match implementation_file ~audit:Expensive.ok r with
         | Some f -> FilenameSet.add f files

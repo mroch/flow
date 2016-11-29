@@ -256,21 +256,23 @@ let commit_modules workers ~options inferred removed =
    (although it probably doesn't need to be), it is only done under --debug. *)
 let heap_check ~audit files = Module_js.(
   let ih = Hashtbl.create 0 in
-  let nh = Hashtbl.create 0 in
+  (* let nh = Hashtbl.create 0 in *)
   files |> List.iter (fun file ->
     let m_file = get_file ~audit (Modulename.Filename file) in
     if not (Loc.check_suffix m_file Files.flow_ext)
     then assert (m_file = file);
     let info = get_module_info ~audit file in
     Hashtbl.add ih file info;
-    let m = info.Module_js._module in
+    (* TODO: commented out to remove _module *)
+    (* let m = info.Module_js._module in
     let f = get_file ~audit m in
-    Hashtbl.add nh m f;
+    Hashtbl.add nh m f; *)
   );
-  nh |> Hashtbl.iter (fun m f ->
+  (* TODO: commented out to remove get_module_names *)
+  (* nh |> Hashtbl.iter (fun m f ->
     let names = get_module_names ~audit f in
     assert (List.exists (fun name -> name = m) names);
-  );
+  ); *)
   ih |> Hashtbl.iter (fun _ info ->
     let parsed = info.Module_js.parsed in
     let checked = info.Module_js.checked in

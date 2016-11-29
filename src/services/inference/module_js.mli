@@ -14,7 +14,6 @@ module NameSet: Set.S with type elt = Modulename.t
 module NameMap: MyMap.S with type key = Modulename.t
 
 type info = {
-  _module: Modulename.t;    (* module name *)
   required: NameSet.t;      (* required module names *)
   require_loc: Loc.t SMap.t;  (* statement locations *)
   resolved_modules: Modulename.t SMap.t;
@@ -46,9 +45,6 @@ val get_module_file: (Modulename.t -> filename option) Expensive.t
 
 (* given a filename, returns module info. unsafe *)
 val get_module_info: (filename -> info) Expensive.t
-
-(* given a filename, returns module name *)
-val get_module_names: (filename -> Modulename.t list) Expensive.t
 
 (* given a module name, returns Some set of modules importing it or None *)
 val get_reverse_imports: (Modulename.t -> NameSet.t option) Expensive.t

@@ -92,7 +92,7 @@ let merge_strict_context ~options cache component_cxs =
           let info = get_module_info ~audit:Expensive.ok file in
           if info.checked && info.parsed then
             (* checked implementation exists *)
-            let impl sig_cx = sig_cx, r, info._module, cx_to in
+            let impl sig_cx = sig_cx, r, resolved_r, cx_to in
             begin match cache#find file with
             | Some sig_cx ->
                 orig_sig_cxs, sig_cxs,

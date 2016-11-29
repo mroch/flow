@@ -42,7 +42,6 @@ module NameMap = MyMap.Make(Modulename)
     that's probably guessable.
 **)
 type info = {
-  _module: Modulename.t; (* module name *)
   required: NameSet.t; (* required module names *)
   require_loc: Loc.t SMap.t; (* statement locations *)
   resolved_modules: Modulename.t SMap.t; (* map from module references in file
@@ -478,8 +477,12 @@ module Node = struct
         | Some _ as result -> result
     in
     match choose_candidate candidates with
-    | Some str -> Modulename.Filename (Files.filename_from_string ~options str)
-    | None -> Modulename.String import_str
+    | Some str ->
+      prerr_endlinef "Chose candidate %s for %s" str import_str;
+      Modulename.Filename (Files.filename_from_string ~options str)
+    | None ->
+      prerr_endlinef "No candidate for %s" import_str;
+      Modulename.String import_str
 
   (* in node, file names are module names, as guaranteed by
      our implementation of exported_name, so anything but a
@@ -572,8 +575,11 @@ module Haste: MODULE_SYSTEM = struct
 
     match resolve_import ~options cx loc ?path_acc chosen_candidate with
     | Some name ->
+        prerr_endlinef "Chose candidate %s for %s" name imported_name;
         Modulename.Filename (Files.filename_from_string ~options name)
-    | None -> Modulename.String chosen_candidate
+    | None ->
+        prerr_endlinef "Fell back on %s for %s" chosen_candidate imported_name;
+        Modulename.String chosen_candidate
 
   (* in haste, many files may provide the same module. here we're also
      supporting the notion of mock modules - allowed duplicates used as
@@ -724,24 +730,12 @@ let get_module_info ~audit f =
   | None -> failwith
       (spf "module info not found for file %s" (string_of_filename f))
 
-let get_module_names ~audit f =
-  let { _module; _ } = get_module_info ~audit f in
-  match _module with
-  | Modulename.Filename file when file = f ->
-    [_module]
-  | _ ->
-    [Modulename.Filename f; _module]
-
 let add_reverse_imports workers filenames =
   let calc_module_reqs_assoc =
     List.fold_left (fun module_reqs_assoc filename ->
-      let { _module = name; required = req; _ } =
-        get_module_info ~audit:Expensive.ok filename in
-      (* we only add requriements from actual module providers. this avoids
-         strange states when two files provide the same module. *)
-      match get_module_file Expensive.ok name with
-      | Some file when file = filename -> (name, req) :: module_reqs_assoc
-      | _ -> module_reqs_assoc
+      let name = Modulename.Filename filename in
+      let { required; _ } = get_module_info ~audit:Expensive.ok filename in
+      (name, required) :: module_reqs_assoc
     ) in
   let module_reqs_assoc = MultiWorker.call
     workers
@@ -757,12 +751,10 @@ let add_reverse_imports workers filenames =
     reverse_imports_track name req
   ) module_reqs_assoc
 
+(* TODO: get rid of this *)
 let get_reverse_imports ~audit module_name =
-  match module_name, reverse_imports_get module_name with
-  | Modulename.Filename filename, None ->
-      let { _module = name; _ } = get_module_info ~audit filename in
-      reverse_imports_get name
-  | _, result -> result
+  ignore (audit);
+  reverse_imports_get module_name
 
 (* TODO [perf]: measure size and possibly optimize *)
 (* Extract and process information from context. In particular, resolve
@@ -776,7 +768,6 @@ let info_of ~options cx =
       SMap.add (Modulename.to_string resolved_r) loc require_loc)
     (Context.require_loc cx) SMap.empty in
   {
-    _module = Context.module_name cx;
     required;
     require_loc;
     resolved_modules;
@@ -801,19 +792,23 @@ let add_module_info ~audit ~options cx =
  *)
 let add_unparsed_info ~audit ~options file docblock =
   let force_check = Options.all options in
-  let _module = exported_module ~options file docblock in
+  let module_ = exported_module ~options file docblock in
   let checked =
     force_check ||
     Loc.source_is_lib_file file ||
     Docblock.is_flow docblock ||
     Docblock.isDeclarationFile docblock
   in
-  let info = { _module; checked; parsed = false;
+  let info = {
+    checked;
+    parsed = false;
     required = NameSet.empty;
     require_loc = SMap.empty;
     resolved_modules = SMap.empty;
     phantom_dependents = SSet.empty;
   } in
+  (* TODO: add info for module name if different than `file` *)
+  ignore (module_);
   add_info ~audit file info
 
 (* Note that the module provided by a file is always accessible via its full
@@ -900,23 +895,15 @@ let commit_modules workers ~options inferred removed =
 
   (* all removed modules must be repicked *)
   (* all modules provided by newly inferred files must be repicked *)
-  let calc_file_module_assoc =
-    List.fold_left (fun file_module_assoc f ->
-      let { _module = m; _ } = get_module_info ~audit:Expensive.ok f in
-      (* [perf] using a list instead of a map *)
-      (f, m) :: file_module_assoc
-    ) in
-  let file_module_assoc = MultiWorker.call
-    workers
-    ~job: calc_file_module_assoc
-    ~neutral: []
-    ~merge: List.rev_append
-    ~next: (MultiWorker.next workers inferred) in
-  let repick = List.fold_left (fun acc (f, m) ->
+  let repick = List.fold_left (fun acc f ->
     let f_module = Modulename.Filename f in
-    add_provider f m; add_provider f f_module;
-    acc |> NameSet.add m |> NameSet.add f_module
-  ) removed file_module_assoc in
+    (* TODO *)
+    (* add_provider f m; *)
+    add_provider f f_module;
+    (* let acc = NameSet.add m acc in *)
+    let acc = NameSet.add f_module acc in
+    acc
+  ) removed inferred in
 
   let module_files = MultiWorker.call
     workers
@@ -1016,12 +1003,10 @@ let rec remove_files options workers files =
     ~job: (List.fold_left (fun acc file ->
       match get_info ~audit:Expensive.ok file with
       | Some info ->
-        let { _module; required; _ } = info in
-        let required_opt = match get_module_file ~audit:Expensive.ok _module with
-        | Some f when f = file -> Some required
-        | _ -> None
-        in
-        FilenameMap.add file (_module, required_opt) acc
+        let { required; _ } = info in
+        (* TODO: make not optional *)
+        let required_opt = Some required in
+        FilenameMap.add file required_opt acc
       | None -> acc
     ))
     ~neutral: FilenameMap.empty
@@ -1032,8 +1017,9 @@ let rec remove_files options workers files =
 and remove_files_with_data options data files =
   (* files may or may not be registered as module providers.
      when they are, we need to clear their registrations *)
-  let names = FilenameMap.fold (fun file datum names ->
-    let _module, required_opt = datum in
+  let names = FilenameMap.fold (fun file required_opt names ->
+    let _module = Modulename.Filename file in
+    (* TODO: this seems useless *)
     remove_provider file _module;
     match required_opt with
     | Some required ->

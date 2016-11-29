@@ -18,6 +18,8 @@ let implicit_require_strict cx master_cx cx_to =
    arbitrary cx, so cx_from and cx_to should have already been copied to cx. *)
 let explicit_impl_require_strict cx (cx_from, r, resolved_r, cx_to) =
   let resolved_r = Modulename.to_string resolved_r in
+  Utils_js.prerr_endlinef "LOOKING UP %s in %s" resolved_r (Context.module_map cx_from |> SMap.bindings |> List.map (fun (k, _) -> Utils_js.spf "%S" k) |> String.concat "; ");
+  Utils_js.prerr_endlinef "LOOKING UP %s in %s" r (Context.module_map cx_to |> SMap.bindings |> List.map (fun (k, _) -> Utils_js.spf "%S" k) |> String.concat "; ");
   let from_t = Flow_js.lookup_module cx_from resolved_r in
   let to_t = Flow_js.lookup_module cx_to r in
   Flow_js.flow_t cx (from_t, to_t)
