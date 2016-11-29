@@ -905,11 +905,12 @@ module ResolvableTypeJob = struct
     | TypeAppT (poly_t, targs)
       ->
       begin match poly_t with
-      | OpenT (_, id) ->
+      | OpenT (_, id) as tvar
+      | ReposT (_, (OpenT (_, id) as tvar)) ->
         if IMap.mem id acc then
           collect_of_types ?log_unresolved cx reason acc targs
         else begin
-          let acc = IMap.add id (Binding poly_t) acc in
+          let acc = IMap.add id (Binding tvar) acc in
           collect_of_types ?log_unresolved cx reason acc targs
         end
 
@@ -1187,6 +1188,10 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
     | EvalT (t, TypeDestructorT (reason, s), i), _ ->
       rec_flow cx trace (eval_destructor cx ~trace reason t s i, u)
 
+    | ReposT (repos_reason, EvalT (t, TypeDestructorT (reason, s), i)), _ ->
+      let l = eval_destructor cx ~trace reason t s i in
+      rec_flow cx trace (ReposT (repos_reason, l), u)
+
     | _, UseT (use_op, EvalT (t, TypeDestructorT (reason, s), i)) ->
       (* When checking a lower bound against a destructed type, we need to take
          some care. In particular, we do not want the destructed type to be
@@ -1221,9 +1226,16 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
     | EvalT (t, DestructuringT (reason, s), i), _ ->
       rec_flow cx trace (eval_selector cx ~trace reason t s i, u)
 
+    | ReposT (repos_reason, EvalT (t, DestructuringT (reason, s), i)), _ ->
+      let l = eval_selector cx ~trace reason t s i in
+      rec_flow cx trace (ReposT (repos_reason, l), u)
+
     | _, UseT (use_op, EvalT (t, DestructuringT (reason, s), i)) ->
       rec_flow cx trace (l, UseT (use_op, eval_selector cx ~trace reason t s i))
 
+    | _, UseT (use_op, ReposT (repos_reason, EvalT (t, DestructuringT (reason, s), i))) ->
+      let u = eval_selector cx ~trace reason t s i in
+      rec_flow cx trace (l, UseT (use_op, ReposT (repos_reason, u)))
 
     (******************)
     (* process X ~> Y *)
@@ -1278,6 +1290,24 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
       | Resolved t2 ->
           rec_flow cx trace (t1, UseT (use_op, t2))
       );
+
+    (*************************)
+    (* repositioning, part 1 *)
+    (*************************)
+
+    (* if a ReposT is used as a lower bound, `reposition` can reposition it *)
+    | ReposT (reason, l), _ ->
+      rec_flow cx trace (reposition cx ~trace reason l, u)
+
+    (* if a ReposT is used as an upper bound, wrap the now-concrete lower bound
+       in a `ReposUpperT`, which will repos `u` when `u` becomes concrete. *)
+    | _, UseT (use_op, ReposT (reason, u)) ->
+      rec_flow cx trace (ReposUpperT (reason, l), UseT (use_op, u))
+
+    | ReposUpperT (reason, l), UseT (use_op, u) ->
+      (* since this guarantees that `u` is not an OpenT, it's safe to use
+         `reposition` on the upper bound here. *)
+      rec_flow cx trace (l, UseT (use_op, reposition cx ~trace reason u))
 
     (************************)
     (* Full type resolution *)
@@ -1383,22 +1413,8 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
       end
 
     (*************************)
-    (* repositioning, part 1 *)
+    (* repositioning, part 2 *)
     (*************************)
-
-    (* if a ReposT is used as a lower bound, `reposition` can reposition it *)
-    | ReposT (reason, l), _ ->
-      rec_flow cx trace (reposition cx ~trace reason l, u)
-
-    (* if a ReposT is used as an upper bound, wrap the now-concrete lower bound
-       in a `ReposUpperT`, which will repos `u` when `u` becomes concrete. *)
-    | _, UseT (use_op, ReposT (reason, u)) ->
-      rec_flow cx trace (ReposUpperT (reason, l), UseT (use_op, u))
-
-    | ReposUpperT (reason, l), UseT (use_op, u) ->
-      (* since this guarantees that `u` is not an OpenT, it's safe to use
-         `reposition` on the upper bound here. *)
-      rec_flow cx trace (l, UseT (use_op, reposition cx ~trace reason u))
 
     (* Waits for a def type to become concrete, repositions it as an upper UseT
        using the stored reason. This can be used to store a reason as it flows
@@ -4670,7 +4686,7 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
       rec_flow cx trace (l, SetPropT (reason, Named (reason, "$value"), t))
 
     (*************************)
-    (* repositioning, part 2 *)
+    (* repositioning, part 3 *)
     (*************************)
 
     (* waits for a lower bound to become concrete, and then repositions it to
@@ -4899,8 +4915,9 @@ let rec __flow cx ((l: Type.t), (u: Type.use_t)) trace =
   )
 
 (* some types need to be resolved before proceeding further *)
+(* TODO: explain why *)
 and needs_resolution = function
-  | OpenT _ | UnionT _ | OptionalT _ | MaybeT _ | AnnotT _ -> true
+  | OpenT _ | UnionT _ | OptionalT _ | MaybeT _ | AnnotT _ | ReposT _ -> true
   | _ -> false
 
 (**
@@ -6132,8 +6149,9 @@ and prep_try_intersection cx trace reason unresolved resolved u r rep =
       (ConcretizeTypes (unresolved, resolved, IntersectionT (r, rep), u)))
 
 (* some patterns need to be concretized before proceeding further *)
+(* TODO: explain why *)
 and patt_that_needs_concretization = function
-  | OpenT _ | UnionT _ | MaybeT _ | OptionalT _ | AnnotT _ -> true
+  | OpenT _ | UnionT _ | MaybeT _ | OptionalT _ | AnnotT _ | ReposT _ -> true
   | _ -> false
 
 and concretize_patt replace patt =
