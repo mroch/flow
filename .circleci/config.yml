@@ -216,6 +216,21 @@ jobs:
           name: Run tool tests
           command: ./tool test --bin bin/macos/flow | cat
 
+  npm_pack:
+    <<: *docker_node
+    steps:
+      - attach_workspace:
+          at: ~/flow
+      - run:
+          name: Pack flow-parser
+          command: |
+            mkdir -p packages/flow-parser/dist/
+            cp dist/flow_parser.js packages/flow-parser/dist/flow_parser.js
+            make dist/npm-flow-parser.tgz
+      - store_artifacts:
+          path: dist/npm-flow-parser.tgz
+          destination: npm-flow-parser.tgz
+
   github_linux:
     docker:
       - image: appropriate/curl:latest
@@ -274,6 +289,10 @@ workflows:
           <<: *run_on_tags
           requires:
             - build_macos
+      - npm_pack:
+          <<: *run_on_tags
+          requires:
+            - build_linux
       - github_linux:
           requires:
             - runtests_linux
