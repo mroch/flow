@@ -227,9 +227,19 @@ jobs:
             mkdir -p packages/flow-parser/dist/
             cp dist/flow_parser.js packages/flow-parser/dist/flow_parser.js
             make dist/npm-flow-parser.tgz
+      - run:
+          name: Pack flow-parser-bin
+          command: |
+            mkdir -p packages/flow-parser-bin/dist/release/
+            cp dist/libflowparser-linux64.zip packages/flow-parser-bin/dist/release/libflowparser-linux64.zip
+            cp dist/libflowparser-osx.zip packages/flow-parser-bin/dist/release/libflowparser-osx.zip
+            make dist/npm-flow-parser-bin.tgz
       - store_artifacts:
           path: dist/npm-flow-parser.tgz
           destination: npm-flow-parser.tgz
+      - store_artifacts:
+          path: dist/npm-flow-parser-bin.tgz
+          destination: npm-flow-parser-bin.tgz
 
   github_linux:
     docker:
@@ -293,6 +303,7 @@ workflows:
           <<: *run_on_tags
           requires:
             - build_linux
+            - build_macos
       - github_linux:
           requires:
             - runtests_linux

@@ -22,6 +22,7 @@
     "src",
     "index.js",
     "binding.gyp",
+    "Makefile",
     "SHASUM256.txt"
   ],
   "os": ["darwin", "linux"],

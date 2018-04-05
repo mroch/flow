@@ -369,12 +369,12 @@ dist/flow/flow$(EXE): build-flow
 dist/flow.zip: dist/flow/flow$(EXE)
 	cd dist && zip -r $(@F) flow/flow$(EXE)
 
-dist/npm-flow-parser.tgz: FORCE
+dist/npm-%.tgz: FORCE
 	@mkdir -p $(@D)
-	@mkdir -p npm-flow-parser-tmp
-	cd npm-flow-parser-tmp && npm pack ../packages/flow-parser/
-	mv npm-flow-parser-tmp/flow-parser-*.tgz dist/npm-flow-parser.tgz
-	@rm -rf npm-flow-parser-tmp
+	@mkdir -p npm-$(*F)-tmp
+	cd npm-$(*F)-tmp && npm pack ../packages/$(*F)/
+	mv npm-$(*F)-tmp/$(*F)-*.tgz dist/npm-$(*F).tgz
+	@rm -rf npm-$(*F)-tmp
 
 FORCE:
 
