@@ -17,6 +17,7 @@
     "verify": "shasum -c SHASUM256.txt"
   },
   "files": [
+    ".premade",
     "lib",
     "include",
     "src",
